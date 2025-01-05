@@ -14,4 +14,6 @@ pub static APP_CACHE_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
         .unwrap_or_default()
 });
 
+pub static APP_CONFIG_PATH: LazyLock<PathBuf> =
+    LazyLock::new(|| APP_CONFIG_DIR.join("config.toml"));
 pub static APP_LOG_DIR: LazyLock<PathBuf> = LazyLock::new(|| APP_CACHE_DIR.join("log"));

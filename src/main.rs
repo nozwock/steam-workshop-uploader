@@ -1,10 +1,11 @@
 mod cli;
+mod config;
 mod defines;
 
 use clap::Parser;
 use cli::Cli;
+use color_eyre::eyre::Result;
 use defines::APP_LOG_DIR;
-use eyre::eyre::Result;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
