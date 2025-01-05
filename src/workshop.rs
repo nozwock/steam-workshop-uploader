@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use color_eyre::eyre;
-use relative_path::PathExt;
+use fs_err::PathExt;
+use relative_path::PathExt as RelPathExt;
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -70,7 +71,7 @@ where
                 fs_err::create_dir_all(proxy_path)?;
             } else if file_type.is_file() {
                 debug!(file = %relative_entry_path, "Adding to item content");
-                fs_err::copy(entry.path().canonicalize()?, &proxy_path)?;
+                fs_err::copy(entry.path().fs_err_canonicalize()?, &proxy_path)?;
             }
         }
     }
