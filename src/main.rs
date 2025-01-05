@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod defines;
 mod ext;
+mod workshop;
 
 use clap::Parser;
 use cli::Cli;
