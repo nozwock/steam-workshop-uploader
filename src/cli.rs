@@ -1,5 +1,8 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use std::fmt::Debug;
+
+use clap::{builder::TypedValueParser, Parser, Subcommand, ValueEnum};
 use clio::ClioPath;
+use steamworks::AppId;
 
 static IGNORE_HELP: &'static str = r#"By default, files and directories matching ignore patterns from files like `.ignore` and `.gitignore` are excluded."#;
 
@@ -40,6 +43,10 @@ pub struct WorkshopItemArgs {
 #[derive(Debug, Clone, Parser)]
 #[command()]
 pub struct CreateCommand {
+    /// Steam AppId
+    #[arg(long, value_parser = clap::value_parser!(u32).map(|it| AppId(it)))]
+    // Getting to .map was painful, I was going around trying to impl TypedValueParser and whatnot
+    pub app_id: Option<AppId>,
     #[command(flatten)]
     pub workshop_item: WorkshopItemArgs,
 }
