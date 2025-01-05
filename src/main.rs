@@ -1,5 +1,9 @@
+mod cli;
+
 use std::path::PathBuf;
 
+use clap::Parser;
+use cli::Cli;
 use eyre::eyre::Result;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -24,6 +28,13 @@ fn main() -> Result<()> {
                 .from_env_lossy(),
         )
         .init();
+
+    let cli = Cli::parse();
+
+    match cli.command {
+        cli::Command::Create(command) => {}
+        cli::Command::Update(command) => {}
+    }
 
     Ok(())
 }

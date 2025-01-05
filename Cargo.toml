@@ -14,3 +14,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 tracing-utils = { git = "https://github.com/nozwock/tracing-utils.git", version = "0.1.0" }
+clio = { version = "0.3", features = ["clap-parse"] }
+steamworks = "0.11.0"
+ignore = "0.4.23"
