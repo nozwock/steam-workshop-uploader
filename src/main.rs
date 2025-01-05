@@ -6,7 +6,6 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::Result;
 use defines::APP_LOG_DIR;
-use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
 
@@ -25,8 +24,8 @@ fn main() -> Result<()> {
         )
         .with(
             EnvFilter::builder()
-                .with_default_directive(LevelFilter::DEBUG.into())
-                .from_env_lossy(),
+                .from_env_lossy()
+                .add_directive(concat!(env!("CARGO_CRATE_NAME"), "=debug").parse()?),
         )
         .init();
 
