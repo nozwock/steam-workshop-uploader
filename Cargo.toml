@@ -8,7 +8,7 @@ directories = "5.0"
 color-eyre = "0.6"
 fs-err = "3.0"
 clap = { version = "4.5", features = ["derive"] }
-inquire = "0.7"
+inquire = { version = "0.7", features = ["editor"] }
 itertools = "0.14"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

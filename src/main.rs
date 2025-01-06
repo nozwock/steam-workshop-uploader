@@ -16,7 +16,7 @@ use itertools::Itertools;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
-use workshop::is_valid_preview_type;
+use workshop::{is_valid_preview_type, Tag};
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -87,6 +87,21 @@ fn main() -> eyre::Result<()> {
         .prompt_skippable()?))?)
     }
 
+    fn inquire_preview_path() -> eyre::Result<Option<String>> {
+        Ok(inquire::Text::new("Preview Image")
+            .with_help_message("Suggested formats include JPG, PNG and GIF")
+            .with_validator(|s: &str| {
+                match PathBuf::from_str(s)
+                    .map_err(eyre::Report::msg)
+                    .and_then(|it| is_valid_preview_type(it))
+                {
+                    Ok(_) => Ok(inquire::validator::Validation::Valid),
+                    Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                }
+            })
+            .prompt_skippable()?)
+    }
+
     /// Note: Doesn't set `content_path`
     fn setup_update_handle(
         handle: steamworks::UpdateHandle<steamworks::ClientManager>,
@@ -115,7 +130,7 @@ fn main() -> eyre::Result<()> {
     // todo: predefined tags for an appid
 
     match cli.command {
-        cli::Command::Create(command) => {
+        cli::Command::Create(mut command) => {
             let app_id =
                 command
                     .app_id
@@ -134,15 +149,49 @@ fn main() -> eyre::Result<()> {
                 .map(|it| Ok(it))
                 .unwrap_or_else(|| inquire_content_path())?;
 
-            // todo: take user input for even more options. Ones that makes sense to pester the user for, like title, description...
-            // Similarly for what's relevant in the update command
-
             if content_path.join(WORKSHOP_METADATA_FILENAME).is_file() {
                 eprintln!(
                     "Metadata file `{}` already exists in {:?}. Aborting creation of a new item.",
                     WORKSHOP_METADATA_FILENAME, content_path
                 );
                 quit::with_code(exitcode::USAGE as u8);
+            }
+
+            // todo: validate title and description length
+
+            if command.workshop_item.title.is_none() {
+                command.workshop_item.title = inquire::Text::new("Title").prompt_skippable()?;
+            }
+            if command.workshop_item.description.is_none() {
+                command.workshop_item.description =
+                    inquire::Editor::new("Description").prompt_skippable()?;
+            }
+            // todo: separate logic for tags when there are predefined tags
+            if command.workshop_item.tags.len() == 0 {
+                inquire::Text::new("Tags")
+                    .with_help_message("Values are comma-serparated")
+                    .with_validator(|s: &str| {
+                        match s
+                            .split(",")
+                            .map(|s| (s, Tag::new(s.to_owned())))
+                            .find(|(_, it)| it.is_err() || s.is_empty())
+                        {
+                            Some((s, Err(err))) => Ok(inquire::validator::Validation::Invalid(
+                                format!("`{s}` {err}").into(),
+                            )),
+                            _ => Ok(inquire::validator::Validation::Valid),
+                        }
+                    })
+                    .prompt_skippable()?;
+            }
+            if command.workshop_item.preview_path.is_none() {
+                command.workshop_item.preview_path = inquire_preview_path()?
+                    .map(|s| PathBuf::from_str(&s).ok())
+                    .flatten();
+            }
+            if command.workshop_item.change_log.is_none() {
+                command.workshop_item.change_log =
+                    inquire::Editor::new("Changelog").prompt_skippable()?;
             }
 
             let content_dir_proxy = tempfile::TempDir::new()?;
@@ -201,6 +250,22 @@ fn main() -> eyre::Result<()> {
                 quit::with_code(exitcode::USAGE as u8);
             }
 
+            // todo: item update status? EItemUpdateStatus
+
+            if !command.no_content_update {
+                command.no_content_update =
+                    inquire::Confirm::new("Skip updating item content files?")
+                        .with_default(false)
+                        .with_help_message("For when you'd like to only update preview, etc.")
+                        .prompt_skippable()?
+                        .unwrap_or_default();
+            }
+
+            if !command.no_content_update && command.workshop_item.change_log.is_none() {
+                command.workshop_item.change_log =
+                    inquire::Editor::new("Changelog").prompt_skippable()?;
+            }
+
             let workshop_item_cfg =
                 WorkshopItemConfig::try_load_path(content_path.join("workshop.toml"))?;
 
@@ -252,7 +317,13 @@ fn main() -> eyre::Result<()> {
 
             info!(item_id = file_id.0, "Workshop item updated");
 
-            if update_tags {
+            if update_tags
+                && inquire::Confirm::new(
+                    &format!("Do you want to overwrite tags in `{WORKSHOP_METADATA_FILENAME}` with the ones provided?"),
+                )
+                .prompt_skippable()?
+                .unwrap_or_default()
+            {
                 WorkshopItemConfig {
                     tags: command.workshop_item.tags,
                     ..workshop_item_cfg
