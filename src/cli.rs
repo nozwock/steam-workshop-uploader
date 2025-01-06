@@ -38,8 +38,8 @@ pub struct WorkshopItemArgs {
         .map(|it| it.to_path_buf())
     )]
     pub content_path: Option<PathBuf>,
-    #[arg(long, required = false, default_value_t)]
-    pub visibility: PublishedFileVisibility,
+    #[arg(long)]
+    pub visibility: Option<PublishedFileVisibility>,
     #[arg(short, long = "tag", value_parser = |s: &str| Tag::new(s.to_owned()))]
     pub tags: Vec<Tag>,
     /// Suggested formats include JPG, PNG and GIF.
@@ -92,7 +92,7 @@ pub struct UpdateCommand {
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, Default, strum::Display)]
-#[strum(serialize_all = "lowercase")]
+#[strum(serialize_all = "PascalCase")]
 pub enum PublishedFileVisibility {
     FriendsOnly,
     #[default]

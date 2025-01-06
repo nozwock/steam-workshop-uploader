@@ -7,7 +7,7 @@ mod workshop;
 use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
-use cli::{Cli, WorkshopItemArgs};
+use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
 use color_eyre::eyre::{self, bail};
 use config::{Config, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
@@ -108,7 +108,7 @@ fn main() -> eyre::Result<()> {
         workshop_item: &WorkshopItemArgs,
     ) -> eyre::Result<steamworks::UpdateHandle<steamworks::ClientManager>> {
         let mut handle = handle
-            .visibility(workshop_item.visibility.into())
+            .visibility(workshop_item.visibility.unwrap_or_default().into())
             .tags(workshop_item.tags.iter().collect_vec(), false);
 
         if let Some(title) = &workshop_item.title {
@@ -197,6 +197,19 @@ fn main() -> eyre::Result<()> {
                     command.workshop_item.preview_path = inquire_preview_path()?
                         .map(|s| PathBuf::from_str(&s).ok())
                         .flatten();
+                }
+                if command.workshop_item.visibility.is_none() {
+                    command.workshop_item.visibility = inquire::Select::new(
+                        "Visibility",
+                        [
+                            PublishedFileVisibility::FriendsOnly,
+                            PublishedFileVisibility::Private,
+                            PublishedFileVisibility::Public,
+                            PublishedFileVisibility::Unlisted,
+                        ]
+                        .to_vec(),
+                    )
+                    .prompt_skippable()?;
                 }
                 if command.workshop_item.change_log.is_none() {
                     command.workshop_item.change_log =
