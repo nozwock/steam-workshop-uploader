@@ -95,8 +95,6 @@ fn main() -> eyre::Result<()> {
 
         let mut handle = handle
             .visibility(workshop_item.visibility.into())
-            // todo: validate tags
-            // https://partner.steamgames.com/doc/api/ISteamUGC#SetItemTags
             .tags(workshop_item.tags.iter().collect_vec(), false);
 
         if let Some(title) = &workshop_item.title {
@@ -134,6 +132,9 @@ fn main() -> eyre::Result<()> {
                 .clone()
                 .map(|it| Ok(it))
                 .unwrap_or_else(|| inquire_content_path())?;
+
+            // todo: take user input for even more options. Ones that makes sense to pester the user for, like title, description...
+            // Similarly for what's relevant in the update command
 
             if content_path.join(WORKSHOP_METADATA_FILENAME).is_file() {
                 eprintln!(

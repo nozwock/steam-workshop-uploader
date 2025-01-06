@@ -1,9 +1,9 @@
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
-use color_eyre::eyre;
+use color_eyre::eyre::{self, bail};
 use fs_err::PathExt;
-use itertools::Itertools;
 use relative_path::PathExt as RelPathExt;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -11,6 +11,40 @@ use crate::{
     defines::WORKSHOP_METADATA_FILENAME,
     ext::{SteamworksClient, SteamworksSingleClient, UGCBlockingExt},
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Tag(Cow<'static, str>);
+
+impl Tag {
+    pub fn new(s: impl Into<Cow<'static, str>>) -> eyre::Result<Self> {
+        let s = s.into();
+        Self::is_valid_tag(&s)?;
+
+        Ok(Self(s))
+    }
+    /// https://partner.steamgames.com/doc/api/ISteamUGC#SetItemTags
+    fn is_valid_tag(s: impl AsRef<str>) -> eyre::Result<()> {
+        if !s.as_ref().len() < 256 {
+            bail!("Tag can only have a max length of 255 characters")
+        }
+
+        if s.as_ref()
+            .chars()
+            .any(|c| !(c != ',' && (c.is_ascii_graphic() || c.is_ascii_whitespace())))
+        {
+            bail!("Tag contains invalid characters")
+        };
+
+        Ok(())
+    }
+}
+
+impl AsRef<str> for Tag {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
 
 pub fn steamworks_client_init(
     app_id: impl Into<steamworks::AppId>,
@@ -85,7 +119,7 @@ pub fn create_item_with_metadata_file(
     single: &SteamworksSingleClient,
     app_id: steamworks::AppId,
     content_path: impl AsRef<Path>,
-    tags: &[impl AsRef<str>],
+    tags: &[Tag],
 ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
     let (file_id, agreement) = client.ugc().create_item_blocking(
         single,
@@ -98,7 +132,7 @@ pub fn create_item_with_metadata_file(
     _ = WorkshopItemConfig {
         app_id: app_id.0,
         item_id: file_id.0,
-        tags: tags.iter().map(|it| it.as_ref().into()).collect_vec(),
+        tags: tags.to_owned(),
     }
     .store_path(content_path.as_ref().join(WORKSHOP_METADATA_FILENAME))?;
 

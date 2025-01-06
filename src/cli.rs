@@ -4,6 +4,8 @@ use clap::{builder::TypedValueParser, Parser, Subcommand, ValueEnum};
 use clio::ClioPath;
 use steamworks::AppId;
 
+use crate::workshop::Tag;
+
 static IGNORE_HELP: &'static str = r#"By default, files and directories matching ignore patterns from files like `.ignore` and `.gitignore` are excluded."#;
 
 #[derive(Debug, Clone, Parser)]
@@ -36,8 +38,8 @@ pub struct WorkshopItemArgs {
     pub content_path: Option<PathBuf>,
     #[arg(long, required = false, default_value_t)]
     pub visibility: PublishedFileVisibility,
-    #[arg(short, long = "tag")]
-    pub tags: Vec<String>,
+    #[arg(short, long = "tag", value_parser = |s: &str| Tag::new(s.to_owned()))]
+    pub tags: Vec<Tag>,
     /// Suggested formats include JPG, PNG and GIF.
     /// Preview images are stored under the user's Cloud, so sufficient free space is required.
     #[arg(

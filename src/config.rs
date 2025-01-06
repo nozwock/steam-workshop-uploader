@@ -6,6 +6,8 @@ use color_eyre::eyre::{self, bail};
 use fs_err::PathExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+use crate::workshop::Tag;
+
 /// It should be stored in the workshop item content directory.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WorkshopItemConfig {
@@ -13,7 +15,7 @@ pub struct WorkshopItemConfig {
     pub item_id: u64,
     /// Tags need to be stored in the metadata file, as Steam doesn’t retain them ifno tags are provided to Steamworks
     /// during an item update.
-    pub tags: Vec<String>,
+    pub tags: Vec<Tag>,
 }
 
 impl Config for WorkshopItemConfig {}
