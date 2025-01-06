@@ -214,10 +214,13 @@ fn main() -> eyre::Result<()> {
                 ),
             )?;
 
-            let handle = client
+            let mut handle = client
                 .ugc()
-                .start_item_update(workshop_item.app_id.into(), workshop_item.item_id.into())
-                .content_path(content_dir_proxy.path()); // Symlinked files don't work unfortunately
+                .start_item_update(workshop_item.app_id.into(), workshop_item.item_id.into());
+
+            if !command.no_content_update {
+                handle = handle.content_path(content_dir_proxy.path()); // Symlinked files don't work unfortunately
+            }
 
             // todo: Change notes option
 

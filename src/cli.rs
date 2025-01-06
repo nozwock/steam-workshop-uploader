@@ -82,6 +82,9 @@ pub struct CreateCommand {
 pub struct UpdateCommand {
     #[command(flatten)]
     pub workshop_item: WorkshopItemArgs,
+    /// Skip updating the workshop item files; only use the content path to access the `workshop.toml` metadata file.
+    #[arg(long = "no-content-update")]
+    pub no_content_update: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, Default, strum::Display)]
