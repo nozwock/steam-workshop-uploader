@@ -25,6 +25,10 @@ impl Tag {
     }
     /// https://partner.steamgames.com/doc/api/ISteamUGC#SetItemTags
     fn is_valid_tag(s: impl AsRef<str>) -> eyre::Result<()> {
+        if s.as_ref().is_empty() {
+            bail!("Empty tags are not allowed")
+        }
+
         if !s.as_ref().len() < 256 {
             bail!("Tag can only have a max length of 255 characters")
         }
