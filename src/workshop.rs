@@ -2,6 +2,7 @@ use std::path::Path;
 
 use color_eyre::eyre;
 use fs_err::PathExt;
+use itertools::Itertools;
 use relative_path::PathExt as RelPathExt;
 use tracing::{debug, info, warn};
 
@@ -82,8 +83,9 @@ where
 pub fn create_item_with_metadata_file(
     client: &SteamworksClient,
     single: &SteamworksSingleClient,
-    content_path: impl AsRef<Path>,
     app_id: steamworks::AppId,
+    content_path: impl AsRef<Path>,
+    tags: &[impl AsRef<str>],
 ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
     let (file_id, agreement) = client.ugc().create_item_blocking(
         single,
@@ -96,6 +98,7 @@ pub fn create_item_with_metadata_file(
     _ = WorkshopItemConfig {
         app_id: app_id.0,
         item_id: file_id.0,
+        tags: tags.iter().map(|it| it.as_ref().into()).collect_vec(),
     }
     .store_path(content_path.as_ref().join(WORKSHOP_METADATA_FILENAME))?;
 

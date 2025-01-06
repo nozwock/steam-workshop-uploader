@@ -11,6 +11,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 pub struct WorkshopItemConfig {
     pub app_id: u32,
     pub item_id: u64,
+    /// Tags need to be stored in the metadata file, as Steam doesn’t retain them ifno tags are provided to Steamworks
+    /// during an item update.
+    pub tags: Vec<String>,
 }
 
 impl Config for WorkshopItemConfig {}

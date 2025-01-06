@@ -159,8 +159,13 @@ fn main() -> eyre::Result<()> {
             )?;
 
             let (client, single) = workshop::steamworks_client_init(app_id)?;
-            let (file_id, _) =
-                workshop::create_item_with_metadata_file(&client, &single, content_path, app_id)?;
+            let (file_id, _) = workshop::create_item_with_metadata_file(
+                &client,
+                &single,
+                app_id,
+                content_path,
+                &command.workshop_item.tags,
+            )?;
 
             let handle = client
                 .ugc()
@@ -178,7 +183,7 @@ fn main() -> eyre::Result<()> {
 
             info!(item_id = file_id.0, "Workshop item updated");
         }
-        cli::Command::Update(command) => {
+        cli::Command::Update(mut command) => {
             let content_path = command
                 .workshop_item
                 .content_path
@@ -194,10 +199,19 @@ fn main() -> eyre::Result<()> {
                 quit::with_code(exitcode::USAGE as u8);
             }
 
-            let workshop_item =
+            let workshop_item_cfg =
                 WorkshopItemConfig::try_load_path(content_path.join("workshop.toml"))?;
 
-            let (client, single) = workshop::steamworks_client_init(workshop_item.app_id)?;
+            // Using tags from metadata file only if no tag args are passed
+            let update_tags = command.workshop_item.tags.len() != 0;
+            if !update_tags {
+                command
+                    .workshop_item
+                    .tags
+                    .extend_from_slice(&workshop_item_cfg.tags);
+            }
+
+            let (client, single) = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
 
             let content_dir_proxy = tempfile::TempDir::new()?;
             workshop::copy_filtered_content(
@@ -214,15 +228,14 @@ fn main() -> eyre::Result<()> {
                 ),
             )?;
 
-            let mut handle = client
-                .ugc()
-                .start_item_update(workshop_item.app_id.into(), workshop_item.item_id.into());
+            let mut handle = client.ugc().start_item_update(
+                workshop_item_cfg.app_id.into(),
+                workshop_item_cfg.item_id.into(),
+            );
 
             if !command.no_content_update {
                 handle = handle.content_path(content_dir_proxy.path()); // Symlinked files don't work unfortunately
             }
-
-            // todo: Change notes option
 
             let (file_id, _) = setup_update_handle(handle, &command.workshop_item)?
                 .submit_blocking(
@@ -236,6 +249,14 @@ fn main() -> eyre::Result<()> {
                 )?;
 
             info!(item_id = file_id.0, "Workshop item updated");
+
+            if update_tags {
+                WorkshopItemConfig {
+                    tags: command.workshop_item.tags,
+                    ..workshop_item_cfg
+                }
+                .store_path(content_path.join(WORKSHOP_METADATA_FILENAME))?;
+            }
         }
     }
 
