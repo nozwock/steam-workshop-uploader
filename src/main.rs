@@ -107,8 +107,6 @@ fn main() -> eyre::Result<()> {
         handle: steamworks::UpdateHandle<steamworks::ClientManager>,
         workshop_item: &WorkshopItemArgs,
     ) -> eyre::Result<steamworks::UpdateHandle<steamworks::ClientManager>> {
-        info!(?workshop_item, "Setting up workshop item update");
-
         let mut handle = handle
             .visibility(workshop_item.visibility.into())
             .tags(workshop_item.tags.iter().collect_vec(), false);
@@ -337,18 +335,19 @@ fn main() -> eyre::Result<()> {
 
             info!(item_id = file_id.0, "Workshop item updated");
 
-            if update_tags && cli.no_prompt
-                || inquire::Confirm::new(
+            if update_tags {
+                if !cli.no_prompt && inquire::Confirm::new(
                     &format!("Do you want to overwrite tags in `{WORKSHOP_METADATA_FILENAME}` with the ones provided?"),
                 )
+                .with_default(false)
                 .prompt_skippable()?
-                .unwrap_or_default()
-            {
-                WorkshopItemConfig {
-                    tags: command.workshop_item.tags,
-                    ..workshop_item_cfg
+                .unwrap_or_default() {
+                    WorkshopItemConfig {
+                        tags: command.workshop_item.tags,
+                        ..workshop_item_cfg
+                    }
+                    .store_path(content_path.join(WORKSHOP_METADATA_FILENAME))?;
                 }
-                .store_path(content_path.join(WORKSHOP_METADATA_FILENAME))?;
             }
         }
     }
