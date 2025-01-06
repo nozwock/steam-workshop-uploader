@@ -3,6 +3,13 @@ name = "steam-workshop-uploader"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "workshop"
+path = "src/main.rs"
+
+# libsteam_api.so, etc is in /target/*/build/steamworks-sys/out/...
+# It'll need to be shipped together with the executable
+
 [dependencies]
 directories = "5.0"
 color-eyre = "0.6"
