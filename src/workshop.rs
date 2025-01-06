@@ -1,6 +1,6 @@
 use std::{borrow::Cow, path::Path};
 
-use color_eyre::eyre::{self, bail};
+use color_eyre::eyre::{self, bail, ContextCompat};
 use fs_err::PathExt;
 use relative_path::PathExt as RelPathExt;
 use serde::{Deserialize, Serialize};
@@ -43,6 +43,21 @@ impl Tag {
 impl AsRef<str> for Tag {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+pub fn is_valid_preview_type(path: impl AsRef<Path>) -> eyre::Result<()> {
+    match infer::get_from_path(path)?
+        .context("Unknown file type")?
+        .mime_type()
+    {
+        "image/jpeg" | "image/gif" | "image/png" => Ok(()),
+        mime_type => {
+            bail!(
+                "Invalid preview filetype `{}`: Only png, jpeg, and gif are allowed",
+                mime_type
+            );
+        }
     }
 }
 

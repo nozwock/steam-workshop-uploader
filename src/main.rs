@@ -16,6 +16,7 @@ use itertools::Itertools;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
+use workshop::is_valid_preview_type;
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -103,8 +104,8 @@ fn main() -> eyre::Result<()> {
         if let Some(description) = &workshop_item.description {
             handle = handle.description(description);
         }
-        // todo: validate file format of the file
         if let Some(preview_path) = &workshop_item.preview_path {
+            is_valid_preview_type(&preview_path)?;
             handle = handle.preview_path(&preview_path.canonicalize()?);
         }
 
