@@ -49,6 +49,8 @@ pub struct WorkshopItemArgs {
         .map(|it| it.to_path_buf())
     )]
     pub preview: Option<PathBuf>,
+    #[arg(short = 'm', long)]
+    pub change_log: Option<String>,
     #[arg(short, long = "glob", value_name = "GLOB")]
     pub globs: Vec<String>,
     #[arg(

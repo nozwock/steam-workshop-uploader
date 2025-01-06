@@ -165,7 +165,14 @@ fn main() -> eyre::Result<()> {
                 .start_item_update(app_id, file_id)
                 .content_path(content_dir_proxy.path());
 
-            setup_update_handle(handle, &command.workshop_item)?.submit_blocking(&single, None)?;
+            setup_update_handle(handle, &command.workshop_item)?.submit_blocking(
+                &single,
+                command
+                    .workshop_item
+                    .change_log
+                    .as_ref()
+                    .map(|it| it.as_str()),
+            )?;
 
             info!(item_id = file_id.0, "Workshop item updated");
         }
@@ -213,7 +220,15 @@ fn main() -> eyre::Result<()> {
             // todo: Change notes option
 
             let (file_id, _) = setup_update_handle(handle, &command.workshop_item)?
-                .submit_blocking(&single, None)?;
+                .submit_blocking(
+                    &single,
+                    // This is such a horrible API, like `Option<&str>`? Seriously?
+                    command
+                        .workshop_item
+                        .change_log
+                        .as_ref()
+                        .map(|it| it.as_str()),
+                )?;
 
             info!(item_id = file_id.0, "Workshop item updated");
         }
