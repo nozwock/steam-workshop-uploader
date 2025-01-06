@@ -20,7 +20,7 @@ pub fn steamworks_client_init(
             match err {
                 // Display for this variant gives "Some Other Error" which is not helpful. Have to get the inner string like this
                 steamworks::SteamAPIInitError::FailedGeneric(err) => err,
-                err => format!("{err:?}"),
+                err => format!("{err}"),
             }
         )
     })?)
