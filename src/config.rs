@@ -15,6 +15,7 @@ pub struct WorkshopItemConfig {
 
 impl Config for WorkshopItemConfig {}
 
+#[allow(unused)]
 pub trait Config
 where
     Self: Serialize + DeserializeOwned + Default,
@@ -33,6 +34,7 @@ where
     }
 }
 
+#[allow(unused)]
 pub trait ConfigExt: Config
 where
     Self: Serialize + DeserializeOwned + Default,

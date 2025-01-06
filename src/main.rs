@@ -17,6 +17,7 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
 
+#[allow(unused)]
 macro_rules! exit_on_err {
     ($res:expr) => {{
         match $res {
@@ -26,6 +27,7 @@ macro_rules! exit_on_err {
     }};
 }
 
+#[allow(unused)]
 macro_rules! exit_on_none {
     ($res:expr) => {{
         match $res {

@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::{path::PathBuf, sync::LazyLock};
 
 pub const APP_ID: &str = "io.github.nozwock.steam-workshop-uploader";
