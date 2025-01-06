@@ -38,17 +38,17 @@ pub struct WorkshopItemArgs {
     pub visibility: PublishedFileVisibility,
     #[arg(short, long = "tag")]
     pub tags: Vec<String>,
-    /// Suggested formats include JPG, PNG and GIF.\
-    /// Preview images are stored under the user's Cloud, so there should be relevant free space.
+    /// Suggested formats include JPG, PNG and GIF.
+    /// Preview images are stored under the user's Cloud, so sufficient free space is required.
     #[arg(
-        long,
+        long = "preview",
         value_name = "FILE",
         value_parser = clap::value_parser!(ClioPath)
         .exists()
         .is_file()
         .map(|it| it.to_path_buf())
     )]
-    pub preview: Option<PathBuf>,
+    pub preview_path: Option<PathBuf>,
     #[arg(short = 'm', long)]
     pub change_log: Option<String>,
     #[arg(short, long = "glob", value_name = "GLOB")]

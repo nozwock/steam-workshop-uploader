@@ -106,7 +106,7 @@ fn main() -> eyre::Result<()> {
             handle = handle.description(description);
         }
         // todo: validate file format of the file
-        if let Some(preview_path) = &workshop_item.preview {
+        if let Some(preview_path) = &workshop_item.preview_path {
             handle = handle.preview_path(&preview_path.canonicalize()?);
         }
 
