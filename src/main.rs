@@ -204,6 +204,15 @@ fn main() -> eyre::Result<()> {
                 }
             }
 
+            let (client, single) = workshop::steamworks_client_init(app_id)?;
+            let (file_id, _) = workshop::create_item_with_metadata_file(
+                &client,
+                &single,
+                app_id,
+                &content_path,
+                &command.workshop_item.tags,
+            )?;
+
             let content_dir_proxy = tempfile::TempDir::new()?;
             workshop::copy_filtered_content(
                 &content_path,
@@ -217,15 +226,6 @@ fn main() -> eyre::Result<()> {
                         .collect_vec()
                         .as_slice(),
                 ),
-            )?;
-
-            let (client, single) = workshop::steamworks_client_init(app_id)?;
-            let (file_id, _) = workshop::create_item_with_metadata_file(
-                &client,
-                &single,
-                app_id,
-                content_path,
-                &command.workshop_item.tags,
             )?;
 
             let handle = client
@@ -298,27 +298,26 @@ fn main() -> eyre::Result<()> {
 
             let (client, single) = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
 
-            let content_dir_proxy = tempfile::TempDir::new()?;
-            workshop::copy_filtered_content(
-                &content_path,
-                content_dir_proxy.path(),
-                Some(command.workshop_item.globs.as_slice()),
-                Some(
-                    command
-                        .workshop_item
-                        .ignore_files
-                        .iter()
-                        .collect_vec()
-                        .as_slice(),
-                ),
-            )?;
-
             let mut handle = client.ugc().start_item_update(
                 workshop_item_cfg.app_id.into(),
                 workshop_item_cfg.item_id.into(),
             );
 
             if !command.no_content_update {
+                let content_dir_proxy = tempfile::TempDir::new()?;
+                workshop::copy_filtered_content(
+                    &content_path,
+                    content_dir_proxy.path(),
+                    Some(command.workshop_item.globs.as_slice()),
+                    Some(
+                        command
+                            .workshop_item
+                            .ignore_files
+                            .iter()
+                            .collect_vec()
+                            .as_slice(),
+                    ),
+                )?;
                 handle = handle.content_path(content_dir_proxy.path()); // Symlinked files don't work unfortunately
             }
 
