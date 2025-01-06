@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, path::PathBuf};
 
 use clap::{builder::TypedValueParser, Parser, Subcommand, ValueEnum};
 use clio::ClioPath;
@@ -25,18 +25,41 @@ pub struct WorkshopItemArgs {
     pub title: Option<String>,
     #[arg(long)]
     pub description: Option<String>,
-    #[arg(long = "content", value_name = "DIR", value_parser = clap::value_parser!(ClioPath).exists().is_dir())]
-    pub content_path: Option<ClioPath>,
-    #[arg(long)]
-    pub visibility: Option<PublishedFileVisibility>,
+    #[arg(
+        long = "content",
+        value_name = "DIR",
+        value_parser = clap::value_parser!(ClioPath)
+        .exists()
+        .is_dir()
+        .map(|it| it.to_path_buf())
+    )]
+    pub content_path: Option<PathBuf>,
+    #[arg(long, required = false, default_value_t)]
+    pub visibility: PublishedFileVisibility,
     #[arg(short, long = "tag")]
     pub tags: Vec<String>,
-    #[arg(long, value_name = "FILE", value_parser = clap::value_parser!(ClioPath).exists().is_file())]
-    pub preview: Option<ClioPath>,
+    /// Suggested formats include JPG, PNG and GIF.\
+    /// Preview images are stored under the user's Cloud, so there should be relevant free space.
+    #[arg(
+        long,
+        value_name = "FILE",
+        value_parser = clap::value_parser!(ClioPath)
+        .exists()
+        .is_file()
+        .map(|it| it.to_path_buf())
+    )]
+    pub preview: Option<PathBuf>,
     #[arg(short, long = "glob", value_name = "GLOB")]
     pub globs: Vec<String>,
-    #[arg(long = "ignore-file", value_name = "FILE", value_parser = clap::value_parser!(ClioPath).exists().is_file())]
-    pub ignore_files: Vec<ClioPath>,
+    #[arg(
+        long = "ignore-file",
+        value_name = "FILE",
+        value_parser = clap::value_parser!(ClioPath)
+            .exists()
+            .is_file()
+            .map(|it| it.to_path_buf())
+    )]
+    pub ignore_files: Vec<PathBuf>,
 }
 
 /// Publish a new workshop item.
@@ -59,9 +82,11 @@ pub struct UpdateCommand {
     pub workshop_item: WorkshopItemArgs,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, Default, strum::Display)]
+#[strum(serialize_all = "lowercase")]
 pub enum PublishedFileVisibility {
     FriendsOnly,
+    #[default]
     Private,
     Public,
     Unlisted,
@@ -75,6 +100,17 @@ impl Into<PublishedFileVisibility> for steamworks::PublishedFileVisibility {
             Self::Private => PublishedFileVisibility::Private,
             Self::Public => PublishedFileVisibility::Public,
             Self::Unlisted => PublishedFileVisibility::Unlisted,
+        }
+    }
+}
+
+impl From<PublishedFileVisibility> for steamworks::PublishedFileVisibility {
+    fn from(value: PublishedFileVisibility) -> Self {
+        match value {
+            PublishedFileVisibility::FriendsOnly => Self::FriendsOnly,
+            PublishedFileVisibility::Private => Self::Private,
+            PublishedFileVisibility::Public => Self::Public,
+            PublishedFileVisibility::Unlisted => Self::Unlisted,
         }
     }
 }
