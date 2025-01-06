@@ -11,6 +11,8 @@ static IGNORE_HELP: &'static str = r#"By default, files and directories matching
 #[derive(Debug, Clone, Parser)]
 #[command(author, version, arg_required_else_help = true, about = IGNORE_HELP)]
 pub struct Cli {
+    #[arg(short = 'q', long)]
+    pub no_prompt: bool,
     #[command(subcommand)]
     pub command: Command,
 }

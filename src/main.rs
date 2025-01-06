@@ -8,7 +8,7 @@ use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use cli::{Cli, WorkshopItemArgs};
-use color_eyre::eyre::{self};
+use color_eyre::eyre::{self, bail};
 use config::{Config, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use ext::UpdateHandleBlockingExt;
@@ -137,17 +137,27 @@ fn main() -> eyre::Result<()> {
                     .clone()
                     .map(|it| Ok(it))
                     .unwrap_or_else(|| -> eyre::Result<_> {
-                        Ok(exit_on_none!(
-                            inquire::CustomType::<u32>::new("AppId").prompt_skippable()?
-                        )
-                        .into())
+                        if cli.no_prompt {
+                            bail!("AppId is required");
+                        } else {
+                            Ok(exit_on_none!(
+                                inquire::CustomType::<u32>::new("AppId").prompt_skippable()?
+                            )
+                            .into())
+                        }
                     })?;
             let content_path = command
                 .workshop_item
                 .content_path
                 .clone()
                 .map(|it| Ok(it))
-                .unwrap_or_else(|| inquire_content_path())?;
+                .unwrap_or_else(|| {
+                    if cli.no_prompt {
+                        bail!("Path to Content Folder is required")
+                    } else {
+                        inquire_content_path()
+                    }
+                })?;
 
             if content_path.join(WORKSHOP_METADATA_FILENAME).is_file() {
                 eprintln!(
@@ -159,39 +169,41 @@ fn main() -> eyre::Result<()> {
 
             // todo: validate title and description length
 
-            if command.workshop_item.title.is_none() {
-                command.workshop_item.title = inquire::Text::new("Title").prompt_skippable()?;
-            }
-            if command.workshop_item.description.is_none() {
-                command.workshop_item.description =
-                    inquire::Editor::new("Description").prompt_skippable()?;
-            }
-            // todo: separate logic for tags when there are predefined tags
-            if command.workshop_item.tags.len() == 0 {
-                inquire::Text::new("Tags")
-                    .with_help_message("Values are comma-serparated")
-                    .with_validator(|s: &str| {
-                        match s
-                            .split(",")
-                            .map(|s| (s, Tag::new(s.to_owned())))
-                            .find(|(_, it)| it.is_err() || s.is_empty())
-                        {
-                            Some((s, Err(err))) => Ok(inquire::validator::Validation::Invalid(
-                                format!("`{s}` {err}").into(),
-                            )),
-                            _ => Ok(inquire::validator::Validation::Valid),
-                        }
-                    })
-                    .prompt_skippable()?;
-            }
-            if command.workshop_item.preview_path.is_none() {
-                command.workshop_item.preview_path = inquire_preview_path()?
-                    .map(|s| PathBuf::from_str(&s).ok())
-                    .flatten();
-            }
-            if command.workshop_item.change_log.is_none() {
-                command.workshop_item.change_log =
-                    inquire::Editor::new("Changelog").prompt_skippable()?;
+            if !cli.no_prompt {
+                if command.workshop_item.title.is_none() {
+                    command.workshop_item.title = inquire::Text::new("Title").prompt_skippable()?;
+                }
+                if command.workshop_item.description.is_none() {
+                    command.workshop_item.description =
+                        inquire::Editor::new("Description").prompt_skippable()?;
+                }
+                // todo: separate logic for tags when there are predefined tags
+                if command.workshop_item.tags.len() == 0 {
+                    inquire::Text::new("Tags")
+                        .with_help_message("Values are comma-serparated")
+                        .with_validator(|s: &str| {
+                            match s
+                                .split(",")
+                                .map(|s| (s, Tag::new(s.to_owned())))
+                                .find(|(_, it)| it.is_err() || s.is_empty())
+                            {
+                                Some((s, Err(err))) => Ok(inquire::validator::Validation::Invalid(
+                                    format!("`{s}` {err}").into(),
+                                )),
+                                _ => Ok(inquire::validator::Validation::Valid),
+                            }
+                        })
+                        .prompt_skippable()?;
+                }
+                if command.workshop_item.preview_path.is_none() {
+                    command.workshop_item.preview_path = inquire_preview_path()?
+                        .map(|s| PathBuf::from_str(&s).ok())
+                        .flatten();
+                }
+                if command.workshop_item.change_log.is_none() {
+                    command.workshop_item.change_log =
+                        inquire::Editor::new("Changelog").prompt_skippable()?;
+                }
             }
 
             let content_dir_proxy = tempfile::TempDir::new()?;
@@ -240,7 +252,13 @@ fn main() -> eyre::Result<()> {
                 .content_path
                 .clone()
                 .map(|it| Ok(it))
-                .unwrap_or_else(|| inquire_content_path())?;
+                .unwrap_or_else(|| {
+                    if cli.no_prompt {
+                        bail!("Path to Content Folder is required")
+                    } else {
+                        inquire_content_path()
+                    }
+                })?;
 
             if !content_path.join(WORKSHOP_METADATA_FILENAME).is_file() {
                 eprintln!(
@@ -252,18 +270,20 @@ fn main() -> eyre::Result<()> {
 
             // todo: item update status? EItemUpdateStatus
 
-            if !command.no_content_update {
-                command.no_content_update =
-                    inquire::Confirm::new("Skip updating item content files?")
-                        .with_default(false)
-                        .with_help_message("For when you'd like to only update preview, etc.")
-                        .prompt_skippable()?
-                        .unwrap_or_default();
-            }
+            if !cli.no_prompt {
+                if !command.no_content_update {
+                    command.no_content_update =
+                        inquire::Confirm::new("Skip updating item content files?")
+                            .with_default(false)
+                            .with_help_message("For when you'd like to only update preview, etc.")
+                            .prompt_skippable()?
+                            .unwrap_or_default();
+                }
 
-            if !command.no_content_update && command.workshop_item.change_log.is_none() {
-                command.workshop_item.change_log =
-                    inquire::Editor::new("Changelog").prompt_skippable()?;
+                if !command.no_content_update && command.workshop_item.change_log.is_none() {
+                    command.workshop_item.change_log =
+                        inquire::Editor::new("Changelog").prompt_skippable()?;
+                }
             }
 
             let workshop_item_cfg =
@@ -317,8 +337,8 @@ fn main() -> eyre::Result<()> {
 
             info!(item_id = file_id.0, "Workshop item updated");
 
-            if update_tags
-                && inquire::Confirm::new(
+            if update_tags && cli.no_prompt
+                || inquire::Confirm::new(
                     &format!("Do you want to overwrite tags in `{WORKSHOP_METADATA_FILENAME}` with the ones provided?"),
                 )
                 .prompt_skippable()?
