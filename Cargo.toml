@@ -33,4 +33,5 @@ strum = { version = "0.26.3", features = ["derive"] }
 exitcode = "1.1.2"
 quit = "2.0.0"
 infer = "0.16.0"
+owo-colors = "4.1.0"
 # symlink = "0.1.0"
