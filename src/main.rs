@@ -13,7 +13,7 @@ use config::{Config, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use ext::UpdateHandleBlockingExt;
 use itertools::Itertools;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
 use workshop::{is_valid_preview_type, Tag};
@@ -67,6 +67,12 @@ fn main() -> eyre::Result<()> {
         )
         .init();
 
+    run().inspect_err(|e| error!("{e}"))?;
+
+    Ok(())
+}
+
+fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     fn inquire_content_path() -> eyre::Result<PathBuf> {
@@ -125,6 +131,9 @@ fn main() -> eyre::Result<()> {
         Ok(handle)
     }
 
+    // todo: proper progress indicators, not just logs
+    // todo: For update command, fetch item title and description to serve as default value for the prompts
+    // todo: open the workshop page in steam on item creation and updation (optional via config)
     // todo: predefined tags for an appid
 
     match cli.command {
