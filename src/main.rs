@@ -43,7 +43,7 @@ fn main() -> eyre::Result<()> {
     let (non_blocking, _guard) = tracing_appender::non_blocking(RotatingFileWriter::new(
         3,
         APP_LOG_DIR.as_path(),
-        "workshop-uploader.log",
+        "workshop.log",
     )?);
 
     tracing_subscriber::registry()
