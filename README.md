@@ -16,7 +16,7 @@ And, I'm not planning to have a GUI for now.
 You can create a workshop item using the following command:
 
 ```shell
-workshop create --content 'path/to/workshop/content/folder' --app-id 0
+workshop create --content 'path/to/workshop/content/folder' --app-id 0 # App ID of the game
 ```
 
 Currently, all arguments for the `create` command are optional, and you will be prompted interactively for any required inputs.
@@ -29,7 +29,7 @@ A file like the one below should be located in the root of the workshop item's c
 
 ##### `workshop.toml`  
 ```toml  
-app_id = 0          # App ID of your game  
+app_id = 0          # App ID of the game  
 item_id = 0         # Workshop item ID  
 tags = ["mytag"]    # Item tags  
 ```  
