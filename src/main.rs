@@ -8,7 +8,10 @@ use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
-use color_eyre::eyre::{self, bail};
+use color_eyre::{
+    eyre::{self, bail},
+    owo_colors::OwoColorize,
+};
 use config::{Config, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use ext::UpdateHandleBlockingExt;
@@ -131,8 +134,15 @@ fn run() -> eyre::Result<()> {
         Ok(handle)
     }
 
-    // todo: proper progress indicators, not just logs
     // todo: For update command, fetch item title and description to serve as default value for the prompts
+    // client.ugc().query_item(todo!()).unwrap().include_long_desc(true).fetch(|r| {});
+    //
+    // If I want to do this, rather than making a blocking wrapper for all these api calls,
+    // it'd better to make an async helper, which'll give a future returning the argument of the callback.
+    // Hmm, it'll have to return both the callback (containing a channel sender?) to pass to the steamworks api,
+    // and the future that we'll consume.
+
+    // todo: proper progress indicators, not just logs
     // todo: open the workshop page in steam on item creation and updation (optional via config)
     // todo: predefined tags for an appid
 
@@ -226,6 +236,8 @@ fn run() -> eyre::Result<()> {
                 }
             }
 
+            eprintln!("{}", "[-] Creating workshop item...".cyan());
+
             let (client, single) = workshop::steamworks_client_init(app_id)?;
             let (file_id, _) = workshop::create_item_with_metadata_file(
                 &client,
@@ -235,10 +247,18 @@ fn run() -> eyre::Result<()> {
                 &command.workshop_item.tags,
             )?;
 
-            let content_dir_proxy = tempfile::TempDir::new()?;
+            eprintln!(
+                "{} {}{}",
+                "[+] Created a new workshop item!".green(),
+                "id=".italic(),
+                file_id.0.italic()
+            );
+            eprintln!("{}", "[-] Preparing workshop content...".cyan());
+
+            let prepared_content_dir = tempfile::TempDir::new()?;
             workshop::copy_filtered_content(
                 &content_path,
-                content_dir_proxy.path(),
+                prepared_content_dir.path(),
                 Some(command.workshop_item.globs.as_slice()),
                 Some(
                     command
@@ -250,10 +270,17 @@ fn run() -> eyre::Result<()> {
                 ),
             )?;
 
+            eprintln!(
+                "{}",
+                "[+] Made a staging copy of the workshop content folder.".green()
+            );
+
             let handle = client
                 .ugc()
                 .start_item_update(app_id, file_id)
-                .content_path(content_dir_proxy.path());
+                .content_path(prepared_content_dir.path());
+
+            eprintln!("{}", "[-] Updating workshop item...".cyan());
 
             setup_update_handle(handle, &command.workshop_item)?.submit_blocking(
                 &single,
@@ -263,6 +290,8 @@ fn run() -> eyre::Result<()> {
                     .as_ref()
                     .map(|it| it.as_str()),
             )?;
+
+            eprintln!("{}", "[+] Workshop item updated!".green());
 
             info!(item_id = file_id.0, "Workshop item updated");
         }
@@ -325,11 +354,13 @@ fn run() -> eyre::Result<()> {
                 workshop_item_cfg.item_id.into(),
             );
 
+            eprintln!("{}", "[-] Preparing workshop content...".cyan());
+
             if !command.no_content_update {
-                let content_dir_proxy = tempfile::TempDir::new()?;
+                let prepared_content_dir = tempfile::TempDir::new()?;
                 workshop::copy_filtered_content(
                     &content_path,
-                    content_dir_proxy.path(),
+                    prepared_content_dir.path(),
                     Some(command.workshop_item.globs.as_slice()),
                     Some(
                         command
@@ -340,9 +371,21 @@ fn run() -> eyre::Result<()> {
                             .as_slice(),
                     ),
                 )?;
-                handle = handle.content_path(content_dir_proxy.path()); // Symlinked files don't work unfortunately
+                handle = handle.content_path(prepared_content_dir.path()); // Symlinked files don't work unfortunately
+                eprintln!(
+                    "{}",
+                    "[+] Made a staging copy of the workshop content folder.".green()
+                );
+            } else {
+                eprintln!(
+                    "{}",
+                    "[+] Skipping content files due to user request.".green()
+                );
             }
 
+            eprintln!("{}", "[-] Updating workshop item...".cyan());
+
+            // todo: visibility needs to be fetched from remote for the default
             let (file_id, _) = setup_update_handle(handle, &command.workshop_item)?
                 .submit_blocking(
                     &single,
@@ -353,6 +396,8 @@ fn run() -> eyre::Result<()> {
                         .as_ref()
                         .map(|it| it.as_str()),
                 )?;
+
+            eprintln!("{}", "[+] Workshop item updated!".green());
 
             info!(item_id = file_id.0, "Workshop item updated");
 

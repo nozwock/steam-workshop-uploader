@@ -81,6 +81,7 @@ pub fn steamworks_client_init(
 }
 
 /// Both `from` and `to` are paths to directory.
+/// Make a copy of data in `from` in `to` while ignoring files matched in the glob.
 pub fn copy_filtered_content<I, O>(
     from: I,
     to: O,
