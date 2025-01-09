@@ -65,9 +65,13 @@ jobs:
           mkdir -p output
           cp target/"$ARCH"/release/"$BIN_FILENAME" output/
           cp "$STEAMWORKS_LIB_PATH"/* output/ 
+
           cd output
+          BUNDLE_FILENAME="${BIN_NAME}-${ARCH}.zip" 
+          7z a "$BUNDLE_FILENAME" *
+
           mkdir release
-          zip -r release/"${BIN_NAME}-${ARCH}.zip" *
+          mv "$BUNDLE_FILENAME" release/
 
       - name: Set Release Type
         run: |
