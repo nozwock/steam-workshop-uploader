@@ -1,5 +1,9 @@
 # Steam Workshop Uploader
 
+It was primarily created to easily exclude files or folders from being uploaded.
+
+You can use the `--glob` and `--ignore-file` options to specify files or folders to exclude (case-sensitive). By default, files and directories matching ignore patterns from files like `.ignore` and `.gitignore` are automatically excluded.
+
 I resisted the urge to name it 'Yet Another Workshop Uploader'...
 
 And, I'm not planning to have a GUI for now.
@@ -43,3 +47,9 @@ workshop update --content 'path/to/workshop/content/folder'
 ```
 
 To see all available options, use the `--help` flag.
+
+## Settings
+
+The config file is located at `$XDG_CONFIG_HOME/io.github.nozwock.steam-workshop-uploader/config.toml`.
+
+You can disable the automatic opening of the workshop item page after creating or updating an item in the config file.
