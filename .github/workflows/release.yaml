@@ -37,6 +37,8 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.rust-target }}
+          # Prevent RUSTFLAGS from overriding `.cargo/config.toml`
+          rustflags: ""
 
       - name: Get Target Architecture
         run: |
