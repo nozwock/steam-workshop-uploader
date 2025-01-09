@@ -14,6 +14,7 @@ And, I'm not planning to have a GUI for now.
 - Setting language/locale for the items' title and description
 - Predefined tags for items
 - Item metadata
+- Paid items for a Curated Workshop
 
 ## Creating a Workshop Item
 
