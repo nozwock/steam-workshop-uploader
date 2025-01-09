@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            rust-target: x86_64-apple-darwin
+    env:
+      BIN_NAME: workshop
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: stable
+          target: ${{ matrix.rust-target }}
+
+      - name: Get Target Architecture
+        run: |
+          # ARCH="$(cargo rustc -- -vV | grep 'host:' | cut -d ' ' -f 2)"
+          ARCH="${{ matrix.rust-target }}"
+          echo "ARCH=$ARCH" >> $GITHUB_ENV
+
+      # Build and Find the Steamworks SDK library path
+      - name: Build & Get Steamworks SDK library path
+        id: steamworks
+        run: |
+          STEAMWORKS_LIB_PATH="$(cargo build --target "$ARCH" --release --bin "$BIN_NAME" --message-format json | jq -r 'select(.reason == "build-script-executed" and (.package_id | contains("steamworks-sys"))) | .out_dir')"
+          echo "STEAMWORKS_LIB_PATH=$STEAMWORKS_LIB_PATH" >> $GITHUB_ENV
+
+      - name: Set Binary Filename
+        run: |
+          BIN_FILENAME="${BIN_NAME}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            BIN_FILENAME="${BIN_NAME}.exe"
+          fi
+          echo "BIN_FILENAME=$BIN_FILENAME" >> $GITHUB_ENV
+
+      # Zip the binary and Steamworks SDK library
+      - name: Create ZIP file
+        run: |
+          mkdir -p output
+          cp target/"$ARCH"/release/"$BIN_FILENAME" output/
+          cp "$STEAMWORKS_LIB_PATH"/* output/ 
+          cd output
+          zip -r "${BIN_NAME}-${ARCH}.zip" *
+
+      - name: Set Release Type
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "IS_DRAFT=false" >> $GITHUB_ENV
+          else
+            echo "IS_DRAFT=true" >> $GITHUB_ENV
+          fi
+
+      # Create a draft release on GitHub
+      - name: Create a draft release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: output/"${BIN_NAME}-${ARCH}.zip"
+          draft: ${{ env.IS_DRAFT }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
