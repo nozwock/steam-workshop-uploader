@@ -356,8 +356,9 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Preparing workshop content...".cyan());
 
+            let prepared_content_dir;
             if !command.no_content_update {
-                let prepared_content_dir = tempfile::TempDir::new()?;
+                prepared_content_dir = tempfile::TempDir::new()?;
                 workshop::copy_filtered_content(
                     &content_path,
                     prepared_content_dir.path(),
