@@ -12,14 +12,14 @@ use color_eyre::{
     eyre::{self, bail, ContextCompat},
     owo_colors::OwoColorize,
 };
-use config::{Config, WorkshopItemConfig};
+use config::{AppConfig, Config, ConfigWithPath, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use ext::UpdateHandleBlockingExt;
 use itertools::Itertools;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
-use workshop::{is_valid_preview_type, Tag};
+use workshop::{is_valid_preview_type, open_workshop_page, Tag};
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -77,6 +77,7 @@ fn main() -> eyre::Result<()> {
 
 fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
+    let config = AppConfig::load()?;
 
     fn inquire_content_path() -> eyre::Result<PathBuf> {
         Ok(PathBuf::from_str(&exit_on_none!(inquire::Text::new(
@@ -134,7 +135,6 @@ fn run() -> eyre::Result<()> {
         Ok(handle)
     }
 
-    // todo: open the workshop page in steam on item creation and updation (optional via config)
     // todo: predefined tags for an appid
 
     let visibility_prompt = inquire::Select::new(
@@ -287,6 +287,11 @@ fn run() -> eyre::Result<()> {
             eprintln!("{}", "[+] Workshop item updated!".green());
 
             info!(item_id = file_id.0, "Workshop item updated");
+
+            if config.open_item_page_on_complete {
+                eprintln!("{}", "[+] Opening workshop page...".green());
+                open_workshop_page(file_id.0)?;
+            }
         }
         cli::Command::Update(mut command) => {
             let content_path = command
@@ -418,7 +423,6 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Updating workshop item...".cyan());
 
-            // todo: visibility needs to be fetched from remote for the default
             let (file_id, _) = setup_update_handle(handle, &command.workshop_item)?
                 .submit_blocking(
                     &single,
@@ -447,6 +451,11 @@ fn run() -> eyre::Result<()> {
                     }
                     .store_path(content_path.join(WORKSHOP_METADATA_FILENAME))?;
                 }
+            }
+
+            if config.open_item_page_on_complete {
+                eprintln!("{}", "[+] Opening workshop page...".green());
+                open_workshop_page(file_id.0)?;
             }
         }
     }

@@ -158,3 +158,8 @@ pub fn create_item_with_metadata_file(
 
     Ok((file_id, agreement))
 }
+
+pub fn open_workshop_page(item_id: u64) -> eyre::Result<()> {
+    open::that(format!("steam://url/CommunityFilePage/{}", item_id))?;
+    Ok(())
+}

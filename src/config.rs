@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use better_default::Default;
 
@@ -6,7 +6,21 @@ use color_eyre::eyre::{self, bail};
 use fs_err::PathExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::workshop::Tag;
+use crate::{defines::APP_CONFIG_PATH, workshop::Tag};
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppConfig {
+    #[default(true)]
+    pub open_item_page_on_complete: bool,
+}
+
+impl Config for AppConfig {}
+impl ConfigWithPath for AppConfig {
+    fn config_path() -> impl AsRef<Path> + 'static {
+        APP_CONFIG_PATH.as_path()
+    }
+}
 
 /// It should be stored in the workshop item content directory.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -40,11 +54,11 @@ where
 }
 
 #[allow(unused)]
-pub trait ConfigExt: Config
+pub trait ConfigWithPath: Config
 where
     Self: Serialize + DeserializeOwned + Default,
 {
-    fn config_path() -> PathBuf;
+    fn config_path() -> impl AsRef<Path> + 'static;
 
     fn try_load() -> eyre::Result<Self> {
         Self::try_load_path(Self::config_path())
