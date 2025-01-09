@@ -1,9 +1,35 @@
 use std::sync::mpsc;
 
 use color_eyre::eyre::{self, bail};
+use tracing::error;
 
 pub type SteamworksClient = steamworks::Client<steamworks::ClientManager>;
 pub type SteamworksSingleClient = steamworks::SingleClient<steamworks::ClientManager>;
+
+#[macro_export]
+macro_rules! run_callbacks_blocking {
+    ($single:ident, $rx:ident) => {{
+        use ::std::sync::mpsc;
+        let out;
+        loop {
+            match $rx.try_recv() {
+                Err(mpsc::TryRecvError::Empty) => {
+                    $single.run_callbacks();
+                    ::std::thread::sleep(::std::time::Duration::from_millis(100));
+                }
+                Err(err @ mpsc::TryRecvError::Disconnected) => {
+                    bail!(err);
+                }
+                Ok(result) => {
+                    out = result;
+                    break;
+                }
+            }
+        }
+
+        out
+    }};
+}
 
 pub trait UGCBlockingExt {
     fn create_item_blocking(
@@ -21,28 +47,15 @@ impl<Manager> UGCBlockingExt for steamworks::UGC<Manager> {
         app_id: steamworks::AppId,
         file_type: steamworks::FileType,
     ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
-        let (create_tx, create_rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel();
 
         self.create_item(app_id.into(), file_type, move |result| {
-            _ = create_tx.send(result);
+            _ = tx.send(result).inspect_err(|e| error!(%e));
         });
 
         // We love single.run_callbacks()!
         // Best API in the world
-        loop {
-            match create_rx.try_recv() {
-                Err(mpsc::TryRecvError::Empty) => {
-                    single.run_callbacks();
-                    ::std::thread::sleep(::std::time::Duration::from_millis(100));
-                }
-                Err(err @ mpsc::TryRecvError::Disconnected) => {
-                    bail!(err);
-                }
-                Ok(result) => {
-                    return Ok(result?);
-                }
-            }
-        }
+        Ok(run_callbacks_blocking!(single, rx)?)
     }
 }
 
@@ -60,25 +73,12 @@ impl<Manager> UpdateHandleBlockingExt for steamworks::UpdateHandle<Manager> {
         single: &SteamworksSingleClient,
         change_note: Option<&str>,
     ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
-        let (update_tx, update_rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel();
 
         self.submit(change_note, move |result| {
-            _ = update_tx.send(result);
+            _ = tx.send(result).inspect_err(|e| error!(%e));
         });
 
-        loop {
-            match update_rx.try_recv() {
-                Err(mpsc::TryRecvError::Empty) => {
-                    single.run_callbacks();
-                    ::std::thread::sleep(::std::time::Duration::from_millis(100));
-                }
-                Err(err @ mpsc::TryRecvError::Disconnected) => {
-                    bail!(err);
-                }
-                Ok(result) => {
-                    return Ok(result?);
-                }
-            }
-        }
+        Ok(run_callbacks_blocking!(single, rx)?)
     }
 }

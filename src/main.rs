@@ -4,12 +4,12 @@ mod defines;
 mod ext;
 mod workshop;
 
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, sync::mpsc};
 
 use clap::Parser;
 use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
 use color_eyre::{
-    eyre::{self, bail},
+    eyre::{self, bail, ContextCompat},
     owo_colors::OwoColorize,
 };
 use config::{Config, WorkshopItemConfig};
@@ -134,17 +134,19 @@ fn run() -> eyre::Result<()> {
         Ok(handle)
     }
 
-    // todo: For update command, fetch item title and description to serve as default value for the prompts
-    // client.ugc().query_item(todo!()).unwrap().include_long_desc(true).fetch(|r| {});
-    //
-    // If I want to do this, rather than making a blocking wrapper for all these api calls,
-    // it'd better to make an async helper, which'll give a future returning the argument of the callback.
-    // Hmm, it'll have to return both the callback (containing a channel sender?) to pass to the steamworks api,
-    // and the future that we'll consume.
-
-    // todo: proper progress indicators, not just logs
     // todo: open the workshop page in steam on item creation and updation (optional via config)
     // todo: predefined tags for an appid
+
+    let visibility_prompt = inquire::Select::new(
+        "Visibility",
+        [
+            PublishedFileVisibility::FriendsOnly,
+            PublishedFileVisibility::Private,
+            PublishedFileVisibility::Public,
+            PublishedFileVisibility::Unlisted,
+        ]
+        .to_vec(),
+    );
 
     match cli.command {
         cli::Command::Create(mut command) => {
@@ -218,17 +220,8 @@ fn run() -> eyre::Result<()> {
                         .flatten();
                 }
                 if command.workshop_item.visibility.is_none() {
-                    command.workshop_item.visibility = inquire::Select::new(
-                        "Visibility",
-                        [
-                            PublishedFileVisibility::FriendsOnly,
-                            PublishedFileVisibility::Private,
-                            PublishedFileVisibility::Public,
-                            PublishedFileVisibility::Unlisted,
-                        ]
-                        .to_vec(),
-                    )
-                    .prompt_skippable()?;
+                    command.workshop_item.visibility =
+                        visibility_prompt.clone().prompt_skippable()?;
                 }
                 if command.workshop_item.change_log.is_none() {
                     command.workshop_item.change_log =
@@ -319,21 +312,7 @@ fn run() -> eyre::Result<()> {
 
             // todo: item update status? EItemUpdateStatus
 
-            if !cli.no_prompt {
-                if !command.no_content_update {
-                    command.no_content_update =
-                        inquire::Confirm::new("Skip updating item content files?")
-                            .with_default(false)
-                            .with_help_message("For when you'd like to only update preview, etc.")
-                            .prompt_skippable()?
-                            .unwrap_or_default();
-                }
-
-                if !command.no_content_update && command.workshop_item.change_log.is_none() {
-                    command.workshop_item.change_log =
-                        inquire::Editor::new("Changelog").prompt_skippable()?;
-                }
-            }
+            if !cli.no_prompt {}
 
             let workshop_item_cfg =
                 WorkshopItemConfig::try_load_path(content_path.join("workshop.toml"))?;
@@ -348,6 +327,59 @@ fn run() -> eyre::Result<()> {
             }
 
             let (client, single) = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
+
+            let (tx, rx) = mpsc::channel();
+            client
+                .ugc()
+                .query_item(workshop_item_cfg.item_id.into())?
+                .include_long_desc(true)
+                .fetch(move |result| {
+                    _ = tx
+                        .send(result.map(|it| it.iter().find_map(|it| it)).ok().flatten())
+                        .inspect_err(|e| error!(%e));
+                });
+
+            let item_info = run_callbacks_blocking!(single, rx).with_context(|| {
+                format!(
+                    "Failed to receive query result for item id: {}",
+                    workshop_item_cfg.item_id
+                )
+            })?;
+
+            if !cli.no_prompt {
+                if command.workshop_item.title.is_none() {
+                    command.workshop_item.title = inquire::Text::new("Title")
+                        .with_initial_value(&item_info.title)
+                        .prompt_skippable()?;
+                }
+                if command.workshop_item.description.is_none() {
+                    command.workshop_item.description = inquire::Editor::new("Description")
+                        .with_predefined_text(&item_info.description)
+                        .prompt_skippable()?;
+                }
+                if !command.no_content_update {
+                    command.no_content_update =
+                        inquire::Confirm::new("Skip updating item content files?")
+                            .with_default(false)
+                            .with_help_message("For when you'd like to only update preview, etc.")
+                            .prompt_skippable()?
+                            .unwrap_or_default();
+                }
+                if !command.no_content_update && command.workshop_item.change_log.is_none() {
+                    command.workshop_item.change_log =
+                        inquire::Editor::new("Changelog").prompt_skippable()?;
+                }
+            }
+
+            command.workshop_item.title.get_or_insert(item_info.title);
+            command
+                .workshop_item
+                .description
+                .get_or_insert(item_info.description);
+            command
+                .workshop_item
+                .visibility
+                .get_or_insert(item_info.visibility.into());
 
             let mut handle = client.ugc().start_item_update(
                 workshop_item_cfg.app_id.into(),
