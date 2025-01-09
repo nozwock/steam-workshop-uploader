@@ -66,7 +66,8 @@ jobs:
           cp target/"$ARCH"/release/"$BIN_FILENAME" output/
           cp "$STEAMWORKS_LIB_PATH"/* output/ 
           cd output
-          zip -r "${BIN_NAME}-${ARCH}.zip" *
+          mkdir release
+          zip -r release/"${BIN_NAME}-${ARCH}.zip" *
 
       - name: Set Release Type
         run: |
@@ -80,7 +81,7 @@ jobs:
       - name: Create a draft release
         uses: softprops/action-gh-release@v1
         with:
-          files: output/"${BIN_NAME}-${ARCH}.zip"
+          files: output/release/*
           draft: ${{ env.IS_DRAFT }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
