@@ -25,6 +25,8 @@ workshop create --content 'path/to/workshop/content/folder' --app-id 0 # App ID 
 
 Currently, all arguments for the `create` command are optional, and you will be prompted interactively for any required inputs.
 
+To disable prompts for scripting purposes, use the `--no-prompt` flag.
+
 To see all available options, use the `--help` flag.
 
 ## Updating a Workshop Item  
@@ -53,3 +55,7 @@ To see all available options, use the `--help` flag.
 The config file is located at `$XDG_CONFIG_HOME/io.github.nozwock.steam-workshop-uploader/config.toml`.
 
 You can disable the automatic opening of the workshop item page after creating or updating an item in the config file.
+
+### Related Projects
+
+- [steamws](https://github.com/wyozi/steamws)
