@@ -51,17 +51,9 @@ fn main() -> eyre::Result<()> {
 
     tracing_subscriber::registry()
         .with({
-            let layer = tracing_subscriber::fmt::layer()
+            tracing_subscriber::fmt::layer()
                 .event_format(SourceFormatter)
-                .with_writer(non_blocking);
-            #[cfg(not(debug_assertions))]
-            {
-                layer
-            }
-            #[cfg(debug_assertions)]
-            {
-                layer.with_writer(std::io::stderr)
-            }
+                .with_writer(non_blocking)
         })
         .with(
             EnvFilter::builder()
