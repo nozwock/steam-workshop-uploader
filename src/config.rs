@@ -8,7 +8,7 @@ use better_default::Default;
 use color_eyre::eyre::{self, bail, ContextCompat};
 use fs_err::PathExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::debug;
+use tracing::{info, warn};
 
 use crate::{defines::APP_CONFIG_PATH, workshop::Tag};
 
@@ -31,13 +31,24 @@ impl<T: Config> ConfigWithPath<T> {
     #[tracing::instrument(skip(paths))]
     pub fn try_load_in_order(paths: &[PathBuf]) -> eyre::Result<Self> {
         for path in paths {
-            if let Ok(cfg) = Self::try_load_path(path) {
-                debug!(?path, "Loaded config");
-                return Ok(cfg);
-            }
+            match Self::try_load_path(path) {
+                Ok(cfg) => {
+                    info!(?path, "Loaded config");
+                    return Ok(cfg);
+                }
+                Err(report) => {
+                    if let Some(err) = report
+                        .chain()
+                        .find_map(|e| e.downcast_ref::<confy::ConfyError>())
+                    {
+                        // This means some issue with parsing
+                        warn!(%err, ?path);
+                    }
+                }
+            };
         }
 
-        bail!("Failed to find config at any set path");
+        bail!("Failed to find a valid config at any set path");
     }
     /// Fails if config is bad, instead of returning its Default
     pub fn try_load_path(path: impl AsRef<Path>) -> eyre::Result<Self> {
@@ -69,8 +80,9 @@ impl ConfigWithPath<AppConfig> {
             APP_CONFIG_PATH.to_path_buf(),
         ])
         .map_or_else(
-            |_| {
+            |_e| {
                 let cfg = Self::default_with_path(APP_CONFIG_PATH.as_path());
+                info!(path = ?APP_CONFIG_PATH.as_path(), "No valid config found, writing default config");
                 cfg.store()?; // Write config to default path
                 Ok(cfg)
             },
@@ -112,7 +124,7 @@ where
 {
     fn try_load_path(path: impl AsRef<Path>) -> eyre::Result<Self> {
         if !path.as_ref().fs_err_canonicalize()?.is_file() {
-            bail!("{:?} is not a file.", path.as_ref());
+            bail!("{:?} is not a file", path.as_ref());
         }
         Ok(confy::load_path::<Self>(path)?)
     }
