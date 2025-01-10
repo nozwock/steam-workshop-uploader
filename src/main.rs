@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod defines;
 mod ext;
+mod utils;
 mod workshop;
 
 use std::{path::PathBuf, str::FromStr, sync::mpsc};
@@ -19,7 +20,7 @@ use itertools::Itertools;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
-use workshop::{is_valid_preview_type, open_workshop_page, Tag};
+use workshop::{check_tags_are_predefined, is_valid_preview_type, open_workshop_page, Tag};
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -127,8 +128,6 @@ fn run() -> eyre::Result<()> {
         Ok(handle)
     }
 
-    // todo: predefined tags for an appid
-
     let visibility_prompt = inquire::Select::new(
         "Visibility",
         [
@@ -157,6 +156,13 @@ fn run() -> eyre::Result<()> {
                             .into())
                         }
                     })?;
+
+            // Verify tags passed from cli
+            let valid_tags = config.inner.valid_tags.get(&app_id);
+            if let Some(valid_tags) = valid_tags {
+                check_tags_are_predefined(&command.workshop_item.tags, &valid_tags)?;
+            }
+
             let content_path = command
                 .workshop_item
                 .content_path
@@ -188,23 +194,39 @@ fn run() -> eyre::Result<()> {
                     command.workshop_item.description =
                         inquire::Editor::new("Description").prompt_skippable()?;
                 }
-                // todo: separate logic for tags when there are predefined tags
                 if command.workshop_item.tags.len() == 0 {
-                    inquire::Text::new("Tags")
-                        .with_help_message("Values are comma-serparated")
-                        .with_validator(|s: &str| {
-                            match s
-                                .split(",")
-                                .map(|s| (s, Tag::new(s.to_owned())))
-                                .find(|(_, it)| it.is_err() || s.is_empty())
-                            {
-                                Some((s, Err(err))) => Ok(inquire::validator::Validation::Invalid(
-                                    format!("`{s}` {err}").into(),
-                                )),
-                                _ => Ok(inquire::validator::Validation::Valid),
-                            }
-                        })
-                        .prompt_skippable()?;
+                    command.workshop_item.tags = if let Some(valid_tags) = valid_tags {
+                        inquire::MultiSelect::new("Tags", valid_tags.clone())
+                            .prompt_skippable()?
+                            .unwrap_or_default()
+                    } else {
+                        inquire::Text::new("Tags")
+                            .with_help_message("Values are comma-serparated")
+                            .with_validator(|s: &str| {
+                                match s
+                                    .split(",")
+                                    .map(|s| (s, Tag::new(s.to_owned())))
+                                    .find(|(_, it)| it.is_err() || s.is_empty())
+                                {
+                                    Some((s, Err(err))) => {
+                                        Ok(inquire::validator::Validation::Invalid(
+                                            format!("`{s}` {err}").into(),
+                                        ))
+                                    }
+                                    _ => Ok(inquire::validator::Validation::Valid),
+                                }
+                            })
+                            .prompt_skippable()?
+                            .map(|it| {
+                                it.split(",")
+                                    .map(|it| {
+                                        Tag::new(it.to_owned())
+                                            .expect("Already validated by prompt")
+                                    })
+                                    .collect_vec()
+                            })
+                            .unwrap_or_default()
+                    };
                 }
                 if command.workshop_item.preview_path.is_none() {
                     command.workshop_item.preview_path = inquire_preview_path()?
@@ -262,7 +284,7 @@ fn run() -> eyre::Result<()> {
 
             let handle = client
                 .ugc()
-                .start_item_update(app_id, file_id)
+                .start_item_update(app_id.into(), file_id)
                 .content_path(prepared_content_dir.path());
 
             eprintln!("{}", "[-] Updating workshop item...".cyan());
@@ -309,18 +331,24 @@ fn run() -> eyre::Result<()> {
 
             // todo: item update status? EItemUpdateStatus
 
-            if !cli.no_prompt {}
-
             let workshop_item_cfg =
                 WorkshopItemConfig::try_load_path(content_path.join("workshop.toml"))?;
 
-            // Using tags from metadata file only if no tag args are passed
+            // Using tags from metadata file only if no tag cli args are passed
             let update_tags = command.workshop_item.tags.len() != 0;
             if !update_tags {
                 command
                     .workshop_item
                     .tags
                     .extend_from_slice(&workshop_item_cfg.tags);
+            }
+
+            let valid_tags = config
+                .inner
+                .valid_tags
+                .get(&workshop_item_cfg.app_id.into());
+            if let Some(valid_tags) = valid_tags {
+                check_tags_are_predefined(&command.workshop_item.tags, &valid_tags)?;
             }
 
             let (client, single) = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;

@@ -2,9 +2,8 @@ use std::{fmt::Debug, path::PathBuf};
 
 use clap::{builder::TypedValueParser, Parser, Subcommand, ValueEnum};
 use clio::ClioPath;
-use steamworks::AppId;
 
-use crate::workshop::Tag;
+use crate::workshop::{AppId, Tag};
 
 static IGNORE_HELP: &'static str = r#"By default, files and directories matching ignore patterns from files like `.ignore` and `.gitignore` are excluded."#;
 

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env,
     path::{Path, PathBuf},
 };
@@ -10,7 +11,10 @@ use fs_err::PathExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::{defines::APP_CONFIG_PATH, workshop::Tag};
+use crate::{
+    defines::APP_CONFIG_PATH,
+    workshop::{AppId, Tag},
+};
 
 /// To be able to easily store config to the path, from which the config was initially read from.
 #[derive(Debug, Clone, Default)]
@@ -96,6 +100,7 @@ impl ConfigWithPath<AppConfig> {
 pub struct AppConfig {
     #[default(true)]
     pub open_item_page_on_complete: bool,
+    pub valid_tags: HashMap<AppId, Vec<Tag>>,
 }
 
 impl Config for AppConfig {}

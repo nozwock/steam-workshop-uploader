@@ -1,7 +1,8 @@
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, fmt, path::Path};
 
 use color_eyre::eyre::{self, bail, ContextCompat};
 use fs_err::PathExt;
+use itertools::Itertools;
 use relative_path::PathExt as RelPathExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
@@ -10,11 +11,40 @@ use crate::{
     config::{Config, WorkshopItemConfig},
     defines::WORKSHOP_METADATA_FILENAME,
     ext::{SteamworksClient, SteamworksSingleClient, UGCBlockingExt},
+    utils::{deserialize_as_string, serialize_as_string},
 };
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AppId(
+    // Was definitely not painful
+    #[serde(
+        serialize_with = "serialize_as_string",
+        deserialize_with = "deserialize_as_string"
+    )]
+    pub u32,
+);
+impl From<u32> for AppId {
+    fn from(id: u32) -> Self {
+        AppId(id)
+    }
+}
+
+impl Into<steamworks::AppId> for AppId {
+    fn into(self) -> steamworks::AppId {
+        self.0.into()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Tag(Cow<'static, str>);
+
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl Tag {
     pub fn new(s: impl Into<Cow<'static, str>>) -> eyre::Result<Self> {
@@ -42,6 +72,26 @@ impl Tag {
 
         Ok(())
     }
+    pub fn is_in_predefined_tags(&self, tags: &[Tag]) -> bool {
+        tags.iter().any(|it| it.0 == self.0)
+    }
+}
+
+pub fn check_tags_are_predefined(tags: &[Tag], predefined: &[Tag]) -> eyre::Result<()> {
+    tags.iter()
+        .map(|it| {
+            it.is_in_predefined_tags(predefined)
+                .then_some(())
+                .with_context(|| {
+                    eyre::eyre!(
+                        "`{}` is not a predefined tag. Available tags are: {}",
+                        it,
+                        predefined.iter().join(", ")
+                    )
+                })
+        })
+        .find(|it| it.is_err())
+        .unwrap_or(Ok(()))
 }
 
 impl AsRef<str> for Tag {
@@ -137,15 +187,15 @@ where
 pub fn create_item_with_metadata_file(
     client: &SteamworksClient,
     single: &SteamworksSingleClient,
-    app_id: steamworks::AppId,
+    app_id: impl Into<steamworks::AppId>,
     content_path: impl AsRef<Path>,
     tags: &[Tag],
 ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
-    let (file_id, agreement) = client.ugc().create_item_blocking(
-        single,
-        app_id.clone(),
-        steamworks::FileType::Community,
-    )?;
+    let app_id = app_id.into();
+    let (file_id, agreement) =
+        client
+            .ugc()
+            .create_item_blocking(single, app_id, steamworks::FileType::Community)?;
 
     info!(item_id = file_id.0, "Workshop item created");
 
