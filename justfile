@@ -28,3 +28,5 @@ bundle bin_name:
     mv $filename ../
     cd ../
     rm -r tmp/
+
+    print $"\nFinal build is at:\n{{ justfile_directory() }}/dist/($filename)"
