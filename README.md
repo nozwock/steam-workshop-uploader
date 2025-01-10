@@ -12,7 +12,6 @@ I resisted the urge to name it 'Yet Another Workshop Uploader'...
 
 ### Unimplemented
 - Setting language/locale for the items' title and description
-- Predefined tags for items. Restricting users to only submit items with tags predefined, which would ideally be valid in-game tags.
 - Item Metadata. Not sure how to implement this since metadata is dynamic. Maybe a plugin system where you could use contained scripts to derive them with read-only access to the mod and game folder?
 - Paid items for a Curated Workshop
 
@@ -56,6 +55,14 @@ To see all available options, use the `--help` flag.
 The config file is located at `$XDG_CONFIG_HOME/io.github.nozwock.steam-workshop-uploader/config.toml`.
 
 You can disable the automatic opening of the workshop item page after creating or updating an item in the config file.
+
+Support for predefined tags is available for workshop items based on the App ID, defined in the config file:
+```toml
+[valid_tags]
+# App ID = List of Tags
+0000 = ["overhaul", "skins", "map", "etc"]
+0001 = ["mod"]
+```
 
 ### Related Projects
 
