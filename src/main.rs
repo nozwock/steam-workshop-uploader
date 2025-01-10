@@ -69,7 +69,7 @@ fn main() -> eyre::Result<()> {
 
 fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
-    let config = AppConfig::load()?;
+    let config = ConfigWithPath::<AppConfig>::load()?;
 
     fn inquire_content_path() -> eyre::Result<PathBuf> {
         Ok(PathBuf::from_str(&exit_on_none!(inquire::Text::new(
@@ -280,7 +280,7 @@ fn run() -> eyre::Result<()> {
 
             info!(item_id = file_id.0, "Workshop item updated");
 
-            if config.open_item_page_on_complete {
+            if config.inner.open_item_page_on_complete {
                 eprintln!("{}", "[+] Opening workshop page...".green());
                 open_workshop_page(file_id.0)?;
             }
@@ -445,7 +445,7 @@ fn run() -> eyre::Result<()> {
                 }
             }
 
-            if config.open_item_page_on_complete {
+            if config.inner.open_item_page_on_complete {
                 eprintln!("{}", "[+] Opening workshop page...".green());
                 open_workshop_page(file_id.0)?;
             }
