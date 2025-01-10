@@ -12,8 +12,8 @@ I resisted the urge to name it 'Yet Another Workshop Uploader'...
 
 ### Unimplemented
 - Setting language/locale for the items' title and description
-- Predefined tags for items
-- Item metadata
+- Predefined tags for items. Restricting users to only submit items with tags predefined, which would ideally be valid in-game tags.
+- Item Metadata. Not sure how to implement this since metadata is dynamic. Maybe a plugin system where you could use contained scripts to derive them with read-only access to the mod and game folder?
 - Paid items for a Curated Workshop
 
 ## Creating a Workshop Item
@@ -59,4 +59,5 @@ You can disable the automatic opening of the workshop item page after creating o
 
 ### Related Projects
 
+- [SteamWorkshopUploader](https://github.com/nihilocrat/SteamWorkshopUploader)
 - [steamws](https://github.com/wyozi/steamws)
