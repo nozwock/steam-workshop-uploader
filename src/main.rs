@@ -2,7 +2,6 @@ mod cli;
 mod config;
 mod defines;
 mod ext;
-mod utils;
 mod workshop;
 
 use std::{path::PathBuf, str::FromStr, sync::mpsc};

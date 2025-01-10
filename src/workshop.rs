@@ -5,25 +5,19 @@ use fs_err::PathExt;
 use itertools::Itertools;
 use relative_path::PathExt as RelPathExt;
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
 use tracing::{debug, info, warn};
 
 use crate::{
     config::{Config, WorkshopItemConfig},
     defines::WORKSHOP_METADATA_FILENAME,
     ext::{SteamworksClient, SteamworksSingleClient, UGCBlockingExt},
-    utils::{deserialize_as_string, serialize_as_string},
 };
 
+#[serde_as]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct AppId(
-    // Was definitely not painful
-    #[serde(
-        serialize_with = "serialize_as_string",
-        deserialize_with = "deserialize_as_string"
-    )]
-    pub u32,
-);
+pub struct AppId(#[serde_as(as = "DisplayFromStr")] pub u32);
 impl From<u32> for AppId {
     fn from(id: u32) -> Self {
         AppId(id)
