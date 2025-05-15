@@ -6,10 +6,6 @@ You can use the `--glob` and `--ignore-file` options to specify files or folders
 
 I resisted the urge to name it 'Yet Another Workshop Uploader'...
 
-~~And, I'm not planning to have a GUI for now.~~ I lied.
-
-<sub><sup>Btw, don't tell me someone's already made one with the feature to exclude stuff? I couldn't find any when I needed it.</sup></sub>
-
 ### Unimplemented
 - Setting language/locale for the items' title and description
 - Item Metadata. Not sure how to implement this since metadata is dynamic. Maybe a plugin system where you could use contained scripts to derive them with read-only access to the mod and game folder?
