@@ -109,6 +109,33 @@ pub fn is_valid_preview_type(path: impl AsRef<Path>) -> eyre::Result<()> {
     }
 }
 
+/// https://partner.steamgames.com/doc/api/ISteamUGC#SetItemTitle
+pub fn is_valid_title(s: impl AsRef<str>) -> eyre::Result<()> {
+    let s = s.as_ref();
+    if s.is_empty() {
+        bail!("Empty title is not allowed")
+    }
+
+    let max = steamworks_sys::k_cchPublishedDocumentTitleMax as usize;
+    if s.len() > max {
+        bail!("Title can only have a max length of {max} characters")
+    }
+
+    Ok(())
+}
+
+/// https://partner.steamgames.com/doc/api/ISteamUGC#SetItemDescription
+pub fn is_valid_description(s: impl AsRef<str>) -> eyre::Result<()> {
+    let s = s.as_ref();
+
+    let max = steamworks_sys::k_cchPublishedDocumentDescriptionMax as usize;
+    if s.len() > max {
+        bail!("Description can only have a max length of {max} characters")
+    }
+
+    Ok(())
+}
+
 pub fn steamworks_client_init(
     app_id: impl Into<steamworks::AppId>,
 ) -> eyre::Result<(SteamworksClient, SteamworksSingleClient)> {

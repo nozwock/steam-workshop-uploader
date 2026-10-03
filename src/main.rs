@@ -19,7 +19,10 @@ use itertools::Itertools;
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
-use workshop::{Tag, check_tags_are_predefined, is_valid_preview_type, open_workshop_page};
+use workshop::{
+    Tag, check_tags_are_predefined, is_valid_description, is_valid_preview_type, is_valid_title,
+    open_workshop_page,
+};
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -149,9 +152,11 @@ fn run() -> eyre::Result<()> {
             .tags(workshop_item.tags.iter().collect_vec(), false);
 
         if let Some(title) = &workshop_item.title {
+            is_valid_title(title)?;
             handle = handle.title(title);
         }
         if let Some(description) = &workshop_item.description {
+            is_valid_description(description)?;
             handle = handle.description(description);
         }
         if let Some(preview_path) = &workshop_item.preview_path {
@@ -237,15 +242,29 @@ fn run() -> eyre::Result<()> {
                 check_tags_are_predefined(&command.workshop_item.tags, valid_tags)?;
             }
 
-            // todo: validate title and description length
+            if let Some(title) = &command.workshop_item.title {
+                is_valid_title(title)?;
+            }
+            if let Some(description) = &command.workshop_item.description {
+                is_valid_description(description)?;
+            }
 
             if !cli.no_prompt {
                 if command.workshop_item.title.is_none() {
-                    command.workshop_item.title = inquire::Text::new("Title").prompt_skippable()?;
+                    command.workshop_item.title = inquire::Text::new("Title")
+                        .with_validator(|s: &str| match is_valid_title(s) {
+                            Ok(_) => Ok(inquire::validator::Validation::Valid),
+                            Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                        })
+                        .prompt_skippable()?;
                 }
                 if command.workshop_item.description.is_none() {
-                    command.workshop_item.description =
-                        inquire::Editor::new("Description").prompt_skippable()?;
+                    command.workshop_item.description = inquire::Editor::new("Description")
+                        .with_validator(|s: &str| match is_valid_description(s) {
+                            Ok(_) => Ok(inquire::validator::Validation::Valid),
+                            Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                        })
+                        .prompt_skippable()?;
                 }
                 if command.workshop_item.tags.is_empty() {
                     let valid_tags = config.inner.valid_tags.get(&app_id).map(|v| v.as_slice());
@@ -387,6 +406,13 @@ fn run() -> eyre::Result<()> {
                 check_tags_are_predefined(&command.workshop_item.tags, &valid_tags)?;
             }
 
+            if let Some(title) = &command.workshop_item.title {
+                is_valid_title(title)?;
+            }
+            if let Some(description) = &command.workshop_item.description {
+                is_valid_description(description)?;
+            }
+
             let (client, single) = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
 
             let (tx, rx) = mpsc::channel();
@@ -408,11 +434,19 @@ fn run() -> eyre::Result<()> {
                 if command.workshop_item.title.is_none() {
                     command.workshop_item.title = inquire::Text::new("Title")
                         .with_initial_value(&item_info.title)
+                        .with_validator(|s: &str| match is_valid_title(s) {
+                            Ok(_) => Ok(inquire::validator::Validation::Valid),
+                            Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                        })
                         .prompt_skippable()?;
                 }
                 if command.workshop_item.description.is_none() {
                     command.workshop_item.description = inquire::Editor::new("Description")
                         .with_predefined_text(&item_info.description)
+                        .with_validator(|s: &str| match is_valid_description(s) {
+                            Ok(_) => Ok(inquire::validator::Validation::Valid),
+                            Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                        })
                         .prompt_skippable()?;
                 }
                 if !command.no_content_update {

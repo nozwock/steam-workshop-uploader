@@ -1425,6 +1425,7 @@ dependencies = [
  "serde",
  "serde_with",
  "steamworks",
+ "steamworks-sys",
  "strum",
  "tempfile",
  "tracing",
