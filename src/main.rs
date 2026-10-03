@@ -627,7 +627,8 @@ fn run() -> eyre::Result<()> {
 
             if tags.is_empty()
                 && let Some(item_id) = item_id
-                && let Ok(Some(fetched_tags)) = workshop::fetch_item_tags(app_id, item_id)
+                && let Ok((client, single)) = workshop::steamworks_client_init(app_id)
+                && let Ok(Some(fetched_tags)) = workshop::fetch_item_tags(&client, &single, item_id)
                 && !fetched_tags.is_empty()
             {
                 eprintln!(

@@ -231,10 +231,10 @@ pub fn create_item_with_metadata_file(
 }
 
 pub fn fetch_item_tags(
-    app_id: impl Into<steamworks::AppId>,
+    client: &SteamworksClient,
+    single: &SteamworksSingleClient,
     item_id: u64,
 ) -> eyre::Result<Option<Vec<Tag>>> {
-    let (client, single) = steamworks_client_init(app_id)?;
     let (tx, rx) = mpsc::channel();
     client
         .ugc()
