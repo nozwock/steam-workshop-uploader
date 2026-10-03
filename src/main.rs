@@ -335,7 +335,13 @@ fn run() -> eyre::Result<()> {
                 .workshop_item
                 .content_path
                 .clone()
-                .map(|it| Ok(it))
+                .or_else(|| {
+                    let cwd = std::env::current_dir().ok()?;
+                    cwd.join(WORKSHOP_METADATA_FILENAME)
+                        .is_file()
+                        .then_some(cwd)
+                })
+                .map(Ok)
                 .unwrap_or_else(|| {
                     if cli.no_prompt {
                         bail!("Path to Content Folder is required")
