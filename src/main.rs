@@ -9,7 +9,7 @@ use std::{path::PathBuf, str::FromStr, sync::mpsc};
 use clap::Parser;
 use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
 use color_eyre::{
-    eyre::{self, bail, ContextCompat},
+    eyre::{self, ContextCompat, bail},
     owo_colors::OwoColorize,
 };
 use config::{AppConfig, Config, ConfigWithPath, WorkshopItemConfig};
@@ -17,9 +17,9 @@ use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use ext::UpdateHandleBlockingExt;
 use itertools::Itertools;
 use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
-use workshop::{check_tags_are_predefined, is_valid_preview_type, open_workshop_page, Tag};
+use workshop::{Tag, check_tags_are_predefined, is_valid_preview_type, open_workshop_page};
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -72,21 +72,21 @@ fn run() -> eyre::Result<()> {
     let config = ConfigWithPath::<AppConfig>::load()?;
 
     fn inquire_content_path() -> eyre::Result<PathBuf> {
-        Ok(PathBuf::from_str(&exit_on_none!(inquire::Text::new(
-            "Content Path"
-        )
-        .with_validator(|s: &str| {
-            match PathBuf::from_str(s) {
-                Ok(path) if path.is_dir() => Ok(inquire::validator::Validation::Valid),
-                Ok(_) => Ok(inquire::validator::Validation::Invalid(
-                    "Is not a directory".into(),
-                )),
-                Err(err) => Ok(inquire::validator::Validation::Invalid(
-                    err.to_string().into(),
-                )),
-            }
-        })
-        .prompt_skippable()?))?)
+        Ok(PathBuf::from_str(&exit_on_none!(
+            inquire::Text::new("Content Path")
+                .with_validator(|s: &str| {
+                    match PathBuf::from_str(s) {
+                        Ok(path) if path.is_dir() => Ok(inquire::validator::Validation::Valid),
+                        Ok(_) => Ok(inquire::validator::Validation::Invalid(
+                            "Is not a directory".into(),
+                        )),
+                        Err(err) => Ok(inquire::validator::Validation::Invalid(
+                            err.to_string().into(),
+                        )),
+                    }
+                })
+                .prompt_skippable()?
+        ))?)
     }
 
     fn inquire_preview_path() -> eyre::Result<Option<String>> {
@@ -102,6 +102,41 @@ fn run() -> eyre::Result<()> {
                 }
             })
             .prompt_skippable()?)
+    }
+
+    fn inquire_tags(valid_tags: Option<&[Tag]>) -> eyre::Result<Vec<Tag>> {
+        if let Some(valid_tags) = valid_tags {
+            Ok(inquire::MultiSelect::new("Tags", valid_tags.to_vec())
+                .prompt_skippable()?
+                .unwrap_or_default())
+        } else {
+            Ok(inquire::Text::new("Tags")
+                .with_help_message("Values are comma-separated")
+                .with_validator(|s: &str| {
+                    if s.trim().is_empty() {
+                        return Ok(inquire::validator::Validation::Valid);
+                    }
+                    match s
+                        .split(",")
+                        .map(|s| (s.trim(), Tag::new(s.trim().to_owned())))
+                        .find(|(_, it)| it.is_err())
+                    {
+                        Some((s, Err(err))) => Ok(inquire::validator::Validation::Invalid(
+                            format!("`{s}` {err}").into(),
+                        )),
+                        _ => Ok(inquire::validator::Validation::Valid),
+                    }
+                })
+                .prompt_skippable()?
+                .map(|it| {
+                    it.split(",")
+                        .map(|it| it.trim())
+                        .filter(|it| !it.is_empty())
+                        .map(|it| Tag::new(it.to_owned()).expect("Already validated by prompt"))
+                        .collect_vec()
+                })
+                .unwrap_or_default())
+        }
     }
 
     /// Note: Doesn't set `content_path`
@@ -140,33 +175,11 @@ fn run() -> eyre::Result<()> {
 
     match cli.command {
         cli::Command::Create(mut command) => {
-            let app_id =
-                command
-                    .app_id
-                    .clone()
-                    .map(|it| Ok(it))
-                    .unwrap_or_else(|| -> eyre::Result<_> {
-                        if cli.no_prompt {
-                            bail!("AppId is required");
-                        } else {
-                            Ok(exit_on_none!(
-                                inquire::CustomType::<u32>::new("AppId").prompt_skippable()?
-                            )
-                            .into())
-                        }
-                    })?;
-
-            // Verify tags passed from cli
-            let valid_tags = config.inner.valid_tags.get(&app_id);
-            if let Some(valid_tags) = valid_tags {
-                check_tags_are_predefined(&command.workshop_item.tags, &valid_tags)?;
-            }
-
             let content_path = command
                 .workshop_item
                 .content_path
                 .clone()
-                .map(|it| Ok(it))
+                .map(Ok)
                 .unwrap_or_else(|| {
                     if cli.no_prompt {
                         bail!("Path to Content Folder is required")
@@ -175,12 +188,53 @@ fn run() -> eyre::Result<()> {
                     }
                 })?;
 
-            if content_path.join(WORKSHOP_METADATA_FILENAME).is_file() {
+            let existing_cfg = content_path
+                .join(WORKSHOP_METADATA_FILENAME)
+                .is_file()
+                .then(|| {
+                    WorkshopItemConfig::try_load_path(content_path.join(WORKSHOP_METADATA_FILENAME))
+                        .ok()
+                })
+                .flatten();
+
+            if let Some(existing_cfg) = &existing_cfg
+                && let Some(item_id) = existing_cfg.item_id
+            {
                 eprintln!(
-                    "Metadata file `{}` already exists in {:?}. Aborting creation of a new item.",
-                    WORKSHOP_METADATA_FILENAME, content_path
+                    "Metadata file `{}` already exists in {:?} with item_id {}. Aborting creation of a new item.",
+                    WORKSHOP_METADATA_FILENAME, content_path, item_id
                 );
                 quit::with_code(exitcode::USAGE as u8);
+            }
+
+            let app_id = command
+                .app_id
+                .or_else(|| existing_cfg.as_ref().map(|it| it.app_id.into()))
+                .map(Ok)
+                .unwrap_or_else(|| -> eyre::Result<_> {
+                    if cli.no_prompt {
+                        bail!("AppId is required");
+                    } else {
+                        Ok(exit_on_none!(
+                            inquire::CustomType::<u32>::new("AppId").prompt_skippable()?
+                        )
+                        .into())
+                    }
+                })?;
+
+            if command.workshop_item.tags.is_empty()
+                && let Some(existing_cfg) = &existing_cfg
+            {
+                command
+                    .workshop_item
+                    .tags
+                    .extend_from_slice(&existing_cfg.tags);
+            }
+
+            // Verify tags passed from cli
+            let valid_tags = config.inner.valid_tags.get(&app_id);
+            if let Some(valid_tags) = valid_tags {
+                check_tags_are_predefined(&command.workshop_item.tags, valid_tags)?;
             }
 
             // todo: validate title and description length
@@ -193,39 +247,9 @@ fn run() -> eyre::Result<()> {
                     command.workshop_item.description =
                         inquire::Editor::new("Description").prompt_skippable()?;
                 }
-                if command.workshop_item.tags.len() == 0 {
-                    command.workshop_item.tags = if let Some(valid_tags) = valid_tags {
-                        inquire::MultiSelect::new("Tags", valid_tags.clone())
-                            .prompt_skippable()?
-                            .unwrap_or_default()
-                    } else {
-                        inquire::Text::new("Tags")
-                            .with_help_message("Values are comma-serparated")
-                            .with_validator(|s: &str| {
-                                match s
-                                    .split(",")
-                                    .map(|s| (s, Tag::new(s.to_owned())))
-                                    .find(|(_, it)| it.is_err() || s.is_empty())
-                                {
-                                    Some((s, Err(err))) => {
-                                        Ok(inquire::validator::Validation::Invalid(
-                                            format!("`{s}` {err}").into(),
-                                        ))
-                                    }
-                                    _ => Ok(inquire::validator::Validation::Valid),
-                                }
-                            })
-                            .prompt_skippable()?
-                            .map(|it| {
-                                it.split(",")
-                                    .map(|it| {
-                                        Tag::new(it.to_owned())
-                                            .expect("Already validated by prompt")
-                                    })
-                                    .collect_vec()
-                            })
-                            .unwrap_or_default()
-                    };
+                if command.workshop_item.tags.is_empty() {
+                    let valid_tags = config.inner.valid_tags.get(&app_id).map(|v| v.as_slice());
+                    command.workshop_item.tags = inquire_tags(valid_tags)?;
                 }
                 if command.workshop_item.preview_path.is_none() {
                     command.workshop_item.preview_path = inquire_preview_path()?
@@ -331,7 +355,14 @@ fn run() -> eyre::Result<()> {
             // todo: item update status? EItemUpdateStatus
 
             let workshop_item_cfg =
-                WorkshopItemConfig::try_load_path(content_path.join("workshop.toml"))?;
+                WorkshopItemConfig::try_load_path(content_path.join(WORKSHOP_METADATA_FILENAME))?;
+
+            let item_id = workshop_item_cfg.item_id.with_context(|| {
+                format!(
+                    "Missing `item_id` in `{}`. You must publish the item first using `workshop create`.",
+                    WORKSHOP_METADATA_FILENAME
+                )
+            })?;
 
             // Using tags from metadata file only if no tag cli args are passed
             let update_tags = command.workshop_item.tags.len() != 0;
@@ -355,7 +386,7 @@ fn run() -> eyre::Result<()> {
             let (tx, rx) = mpsc::channel();
             client
                 .ugc()
-                .query_item(workshop_item_cfg.item_id.into())?
+                .query_item(item_id.into())?
                 .include_long_desc(true)
                 .fetch(move |result| {
                     _ = tx
@@ -364,10 +395,7 @@ fn run() -> eyre::Result<()> {
                 });
 
             let item_info = run_callbacks_blocking!(single, rx).with_context(|| {
-                format!(
-                    "Failed to receive query result for item id: {}",
-                    workshop_item_cfg.item_id
-                )
+                format!("Failed to receive query result for item id: {}", item_id)
             })?;
 
             if !cli.no_prompt {
@@ -405,10 +433,9 @@ fn run() -> eyre::Result<()> {
                 .visibility
                 .get_or_insert(item_info.visibility.into());
 
-            let mut handle = client.ugc().start_item_update(
-                workshop_item_cfg.app_id.into(),
-                workshop_item_cfg.item_id.into(),
-            );
+            let mut handle = client
+                .ugc()
+                .start_item_update(workshop_item_cfg.app_id.into(), item_id.into());
 
             eprintln!("{}", "[-] Preparing workshop content...".cyan());
 
@@ -476,6 +503,122 @@ fn run() -> eyre::Result<()> {
                 eprintln!("{}", "[+] Opening workshop page...".green());
                 open_workshop_page(file_id.0)?;
             }
+        }
+        cli::Command::Init(command) => {
+            let content_path = command.content_path.map(Ok).unwrap_or_else(|| {
+                if cli.no_prompt {
+                    bail!("Path to Content Folder is required")
+                } else {
+                    inquire_content_path()
+                }
+            })?;
+
+            let metadata_path = content_path.join(WORKSHOP_METADATA_FILENAME);
+            if metadata_path.is_file() && !command.force {
+                if cli.no_prompt {
+                    bail!(
+                        "Metadata file `{}` already exists in {:?}",
+                        WORKSHOP_METADATA_FILENAME,
+                        content_path
+                    );
+                } else {
+                    let overwrite = inquire::Confirm::new(&format!(
+                        "Metadata file `{}` already exists in {:?}. Overwrite?",
+                        WORKSHOP_METADATA_FILENAME, content_path
+                    ))
+                    .with_default(false)
+                    .prompt_skippable()?
+                    .unwrap_or(false);
+
+                    if !overwrite {
+                        eprintln!("{}", "Aborted.".yellow());
+                        return Ok(());
+                    }
+                }
+            }
+
+            let app_id = command
+                .app_id
+                .map(Ok)
+                .unwrap_or_else(|| -> eyre::Result<_> {
+                    if cli.no_prompt {
+                        bail!("AppId is required");
+                    } else {
+                        Ok(exit_on_none!(
+                            inquire::CustomType::<u32>::new("AppId").prompt_skippable()?
+                        )
+                        .into())
+                    }
+                })?;
+
+            let item_id = if let Some(item_id) = command.item_id {
+                Some(item_id)
+            } else if cli.no_prompt {
+                None
+            } else {
+                inquire::Text::new("ItemId")
+                    .with_help_message(
+                        "Leave empty if you have not published the item to Steam Workshop yet",
+                    )
+                    .with_validator(|s: &str| {
+                        if s.trim().is_empty() {
+                            Ok(inquire::validator::Validation::Valid)
+                        } else {
+                            match s.trim().parse::<u64>() {
+                                Ok(_) => Ok(inquire::validator::Validation::Valid),
+                                Err(err) => Ok(inquire::validator::Validation::Invalid(
+                                    err.to_string().into(),
+                                )),
+                            }
+                        }
+                    })
+                    .prompt_skippable()?
+                    .and_then(|s| {
+                        let s = s.trim();
+                        if s.is_empty() {
+                            None
+                        } else {
+                            s.parse::<u64>().ok()
+                        }
+                    })
+            };
+
+            let mut tags = command.tags;
+
+            if tags.is_empty()
+                && let Some(item_id) = item_id
+                && let Ok(Some(fetched_tags)) = workshop::fetch_item_tags(app_id, item_id)
+                && !fetched_tags.is_empty()
+            {
+                eprintln!(
+                    "{} {}",
+                    "[+] Retrieved tags from Steam:".green(),
+                    fetched_tags.iter().join(", ")
+                );
+                tags = fetched_tags;
+            }
+
+            if !cli.no_prompt && tags.is_empty() {
+                let valid_tags = config.inner.valid_tags.get(&app_id).map(|v| v.as_slice());
+                tags = inquire_tags(valid_tags)?;
+            }
+
+            if let Some(valid_tags) = config.inner.valid_tags.get(&app_id) {
+                check_tags_are_predefined(&tags, valid_tags)?;
+            }
+
+            WorkshopItemConfig {
+                app_id: app_id.0,
+                item_id,
+                tags,
+            }
+            .store_path(&metadata_path)?;
+
+            eprintln!(
+                "{} `{}`",
+                "[+] Created workshop project file at".green(),
+                metadata_path.display()
+            );
         }
     }
 

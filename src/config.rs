@@ -6,9 +6,9 @@ use std::{
 
 use better_default::Default;
 
-use color_eyre::eyre::{self, bail, ContextCompat};
+use color_eyre::eyre::{self, ContextCompat, bail};
 use fs_err::PathExt;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tracing::{info, warn};
 
 use crate::{
@@ -114,8 +114,9 @@ impl ConfigWithPathExt for AppConfig {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WorkshopItemConfig {
     pub app_id: u32,
-    pub item_id: u64,
-    /// Tags need to be stored in the metadata file, as Steam doesn’t retain them ifno tags are provided to Steamworks
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<u64>,
+    /// Tags need to be stored in the metadata file, as Steam doesn’t retain them if no tags are provided to Steamworks
     /// during an item update.
     pub tags: Vec<Tag>,
 }

@@ -1,12 +1,12 @@
-use std::{borrow::Cow, fmt, path::Path};
+use std::{borrow::Cow, fmt, path::Path, sync::mpsc};
 
-use color_eyre::eyre::{self, bail, ContextCompat};
+use color_eyre::eyre::{self, ContextCompat, bail};
 use fs_err::PathExt;
 use itertools::Itertools;
 use relative_path::PathExt as RelPathExt;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
-use tracing::{debug, info, warn};
+use serde_with::{DisplayFromStr, serde_as};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     config::{Config, WorkshopItemConfig},
@@ -195,12 +195,39 @@ pub fn create_item_with_metadata_file(
 
     _ = WorkshopItemConfig {
         app_id: app_id.0,
-        item_id: file_id.0,
+        item_id: Some(file_id.0),
         tags: tags.to_owned(),
     }
     .store_path(content_path.as_ref().join(WORKSHOP_METADATA_FILENAME))?;
 
     Ok((file_id, agreement))
+}
+
+pub fn fetch_item_tags(
+    app_id: impl Into<steamworks::AppId>,
+    item_id: u64,
+) -> eyre::Result<Option<Vec<Tag>>> {
+    let (client, single) = steamworks_client_init(app_id)?;
+    let (tx, rx) = mpsc::channel();
+    client
+        .ugc()
+        .query_item(item_id.into())?
+        .fetch(move |result| {
+            _ = tx
+                .send(result.map(|it| it.iter().find_map(|it| it)).ok().flatten())
+                .inspect_err(|e| error!(%e));
+        });
+
+    let item_info = crate::run_callbacks_blocking!(single, rx)
+        .with_context(|| format!("Failed to receive query result for item id: {item_id}"))?;
+
+    let tags = item_info
+        .tags
+        .into_iter()
+        .filter_map(|t| Tag::new(t).ok())
+        .collect();
+
+    Ok(Some(tags))
 }
 
 pub fn open_workshop_page(item_id: u64) -> eyre::Result<()> {

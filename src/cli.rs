@@ -1,6 +1,6 @@
 use std::{fmt::Debug, path::PathBuf};
 
-use clap::{builder::TypedValueParser, Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum, builder::TypedValueParser};
 use clio::ClioPath;
 
 use crate::workshop::{AppId, Tag};
@@ -20,6 +20,7 @@ pub struct Cli {
 pub enum Command {
     Create(CreateCommand),
     Update(UpdateCommand),
+    Init(InitCommand),
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -88,6 +89,31 @@ pub struct UpdateCommand {
     /// Skip updating the workshop item files; only use the content path to access the `workshop.toml` metadata file.
     #[arg(long = "no-content-update")]
     pub no_content_update: bool,
+}
+
+/// Create a `workshop.toml` project file without creating a new workshop item.
+#[derive(Debug, Clone, Parser)]
+#[command()]
+pub struct InitCommand {
+    /// Steam AppId
+    #[arg(long, value_parser = clap::value_parser!(u32).map(|it| AppId(it)))]
+    pub app_id: Option<AppId>,
+    /// Steam Workshop Item ID
+    #[arg(long)]
+    pub item_id: Option<u64>,
+    #[arg(
+        long = "content",
+        value_name = "DIR",
+        value_parser = clap::value_parser!(ClioPath)
+            .exists()
+            .is_dir()
+            .map(|it| it.to_path_buf())
+    )]
+    pub content_path: Option<PathBuf>,
+    #[arg(short, long = "tag", value_parser = |s: &str| Tag::new(s.to_owned()))]
+    pub tags: Vec<Tag>,
+    #[arg(short, long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, Default, strum::Display)]
