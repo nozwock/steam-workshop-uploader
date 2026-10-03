@@ -10,7 +10,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     config::{Config, WorkshopItemConfig},
-    defines::WORKSHOP_METADATA_FILENAME,
+    defines::{LOCALE_ENV_VARS, WORKSHOP_METADATA_FILENAME},
     ext::{SteamworksClient, SteamworksSingleClient, UGCBlockingExt},
 };
 
@@ -136,10 +136,34 @@ pub fn is_valid_description(s: impl AsRef<str>) -> eyre::Result<()> {
     Ok(())
 }
 
+/// ## SAFETY
+/// Calls [`std::env::set_var`] and [`std::env::remove_var`].
+///
+/// Which means this function should only be called in a single-threaded context. So it's best to initialize the client
+/// before starting any other threads.
 pub fn steamworks_client_init(
     app_id: impl Into<steamworks::AppId>,
 ) -> eyre::Result<(SteamworksClient, SteamworksSingleClient)> {
-    Ok(steamworks::Client::init_app(app_id).map_err(|err| {
+    // `SteamAPI_Init` modifies the process environment (notably forcing LC_ALL=C), which breaks UTF-8 handling in child
+    // processes such as inquire::Editor.
+    // Record all locale-related variables before initialization to restore them afterwards.
+    let prev_locale_vars = LOCALE_ENV_VARS
+        .iter()
+        .map(|&var| (var, std::env::var_os(var)))
+        .collect::<Vec<_>>();
+
+    let res = steamworks::Client::init_app(app_id);
+
+    unsafe {
+        for (var, prev_val) in prev_locale_vars {
+            match prev_val {
+                Some(val) => std::env::set_var(var, val),
+                None => std::env::remove_var(var),
+            }
+        }
+    }
+
+    Ok(res.map_err(|err| {
         eyre::eyre!(
             "{}",
             match err {
