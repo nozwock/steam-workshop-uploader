@@ -85,7 +85,7 @@ jobs:
 
       # Create a draft release on GitHub
       - name: Create a draft release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: output/release/*
           draft: ${{ env.IS_DRAFT }}
