@@ -9,6 +9,7 @@ use tracing::info;
 use crate::{Plugin, PluginContext, register_plugin};
 
 struct DayZPlugin;
+register_plugin!(DayZPlugin);
 
 impl Plugin for DayZPlugin {
     fn app_id(&self) -> u32 {
@@ -24,8 +25,6 @@ impl Plugin for DayZPlugin {
         write_dayz_meta_cpp(ctx.content_path, item_id)
     }
 }
-
-register_plugin!(DayZPlugin);
 
 /// DayZ mods carry a `meta.cpp` in their root; the game uses `publishedid` in it to identify the workshop item a mod
 /// came from, so it must match the actual item id.
