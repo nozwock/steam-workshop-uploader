@@ -8,8 +8,6 @@ use tracing::info;
 
 use crate::{Plugin, PluginContext, register_plugin};
 
-const META_CPP_FILENAME: &str = "meta.cpp";
-
 struct DayZPlugin;
 
 impl Plugin for DayZPlugin {
@@ -39,7 +37,7 @@ pub fn write_dayz_meta_cpp(content_path: impl AsRef<Path>, item_id: u64) -> eyre
     // `DateTime.ToBinary()` is what DayZ's own publishing tool seems to use.
     let timestamp = dotnet_to_binary_utc(SystemTime::now())?;
 
-    let meta_cpp_path = content_path.join(META_CPP_FILENAME);
+    let meta_cpp_path = content_path.join("meta.cpp");
     let meta_cpp = if meta_cpp_path.exists() {
         let source = fs_err::read_to_string(&meta_cpp_path)?;
         let source = upsert_meta_cpp_field(&source, "publishedid", &item_id.to_string());
