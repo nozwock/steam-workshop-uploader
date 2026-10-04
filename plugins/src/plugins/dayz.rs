@@ -1,6 +1,6 @@
 use std::{
     path::Path,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{SystemTime, SystemTimeError, UNIX_EPOCH},
 };
 
 use color_eyre::{eyre, owo_colors::OwoColorize};
@@ -40,9 +40,7 @@ register_plugin!(DayZPlugin);
 /// publishing tool writes.
 pub fn write_dayz_meta_cpp(content_path: impl AsRef<Path>, item_id: u64) -> eyre::Result<()> {
     let content_path = content_path.as_ref();
-    let ticks =
-        (SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + 62_135_596_800) * 10_000_000;
-    let timestamp = ticks | (1 << 62);
+    let timestamp = dotnet_to_binary_utc(SystemTime::now())?;
 
     let meta_cpp_path = content_path.join(META_CPP_FILENAME);
     let meta_cpp = if meta_cpp_path.exists() {
@@ -91,6 +89,29 @@ fn upsert_meta_cpp_field(source: &str, key: &str, value: &str) -> String {
     out
 }
 
+/// Encodes a `SystemTime` in .NET `DateTime.ToBinary()` format with `DateTimeKind.Utc`.
+///
+/// See [source](https://github.com/dotnet/runtime/blob/4271d88e0aebf3d04f188f1334c2220d80555ef6/src/libraries/System.Private.CoreLib/src/System/DateTime.cs#L1313-L1340).
+fn dotnet_to_binary_utc(time: SystemTime) -> Result<u64, SystemTimeError> {
+    const TICKS_PER_SECOND: u64 = 10_000_000;
+    const DOTNET_KIND_UTC: u64 = 1 << 62;
+    const SECONDS_FROM_YEAR_1_TO_UNIX_EPOCH: u64 = {
+        const GREGORIAN_EPOCH_YEAR: u64 = 1;
+        const UNIX_EPOCH_YEAR: u64 = 1970;
+
+        const YEARS: u64 = UNIX_EPOCH_YEAR - GREGORIAN_EPOCH_YEAR;
+        const LEAP_DAYS: u64 = YEARS / 4 - YEARS / 100 + YEARS / 400;
+        const TOTAL_DAYS: u64 = YEARS * 365 + LEAP_DAYS;
+        const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+
+        TOTAL_DAYS * SECONDS_PER_DAY
+    };
+
+    let unix_secs = time.duration_since(UNIX_EPOCH)?.as_secs();
+    let ticks = (unix_secs + SECONDS_FROM_YEAR_1_TO_UNIX_EPOCH) * TICKS_PER_SECOND;
+    Ok(ticks | DOTNET_KIND_UTC)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,8 +150,11 @@ mod tests {
     #[test]
     fn timestamp_is_dotnet_to_binary_utc() {
         // DateTime.ToBinary() of 2026-10-03 19:14:12 UTC
-        let ticks = (1_791_054_852u64 + 62_135_596_800) * 10_000_000;
-        assert_eq!(ticks | (1 << 62), 5_250_952_534_947_387_904);
+        let time = UNIX_EPOCH + std::time::Duration::from_secs(1_791_054_852);
+        assert_eq!(
+            dotnet_to_binary_utc(time).unwrap(),
+            5_250_952_534_947_387_904
+        );
     }
 
     #[test]
