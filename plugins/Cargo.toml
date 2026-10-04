@@ -1,0 +1,11 @@
+[package]
+name = "plugins"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+inventory = "0.3"
+color-eyre = "0.6"
+fs-err = "3.0"
+tracing = "0.1"
+tempfile = "3.15"

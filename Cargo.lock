@@ -774,6 +774,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "is-docker"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1077,6 +1086,17 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "plugins"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "fs-err",
+ "inventory",
+ "tempfile",
+ "tracing",
+]
 
 [[package]]
 name = "portable-atomic"
@@ -1426,6 +1446,7 @@ dependencies = [
  "itertools",
  "open",
  "owo-colors",
+ "plugins",
  "quit",
  "relative-path",
  "serde",

@@ -8,12 +8,13 @@ use std::{path::PathBuf, str::FromStr, sync::mpsc};
 use clap::Parser;
 use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
 use color_eyre::{
-    eyre::{self, ContextCompat, WrapErr, bail},
+    eyre::{self, ContextCompat, bail},
     owo_colors::OwoColorize,
 };
 use config::{AppConfig, Config, ConfigWithPath, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use itertools::Itertools;
+use plugins::{PluginContext, find_plugin};
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
@@ -227,6 +228,12 @@ fn run() -> eyre::Result<()> {
                     }
                 })?;
 
+            let plugin = find_plugin(app_id.0);
+            if let Some(plugin) = plugin {
+                info!(plugin = plugin.name(), "Matched game plugin");
+            }
+            let plugin_ctx = PluginContext::new(app_id.0, &content_path);
+
             if command.workshop_item.tags.is_empty()
                 && let Some(existing_cfg) = &existing_cfg
             {
@@ -285,6 +292,10 @@ fn run() -> eyre::Result<()> {
                 }
             }
 
+            if let Some(plugin) = plugin {
+                plugin.pre_create(&plugin_ctx)?;
+            }
+
             eprintln!("{}", "[-] Creating workshop item...".cyan());
 
             let client = SteamworksClient::init(app_id)?;
@@ -301,6 +312,12 @@ fn run() -> eyre::Result<()> {
                 "id=".italic(),
                 file_id.0.italic()
             );
+
+            if let Some(plugin) = plugin {
+                plugin.post_create(&plugin_ctx, file_id.0)?;
+                plugin.pre_update(&plugin_ctx, file_id.0)?;
+            }
+
             eprintln!("{}", "[-] Preparing workshop content...".cyan());
 
             let prepared_content_dir = tempfile::TempDir::new()?;
@@ -341,6 +358,10 @@ fn run() -> eyre::Result<()> {
             eprintln!("{}", "[+] Workshop item updated!".green());
 
             info!(item_id = file_id.0, "Workshop item updated");
+
+            if let Some(plugin) = plugin {
+                plugin.post_update(&plugin_ctx, file_id.0)?;
+            }
 
             if config.inner.open_item_page_on_complete {
                 eprintln!("{}", "[+] Opening workshop page...".green());
@@ -386,6 +407,12 @@ fn run() -> eyre::Result<()> {
                     WORKSHOP_METADATA_FILENAME
                 )
             })?;
+
+            let plugin = find_plugin(workshop_item_cfg.app_id);
+            if let Some(plugin) = plugin {
+                info!(plugin = plugin.name(), "Matched game plugin");
+            }
+            let plugin_ctx = PluginContext::new(workshop_item_cfg.app_id, &content_path);
 
             // Using tags from metadata file only if no tag cli args are passed
             let update_tags = command.workshop_item.tags.len() != 0;
@@ -475,10 +502,14 @@ fn run() -> eyre::Result<()> {
                 .ugc()
                 .start_item_update(workshop_item_cfg.app_id.into(), item_id.into());
 
-            eprintln!("{}", "[-] Preparing workshop content...".cyan());
-
             let prepared_content_dir;
             if !command.no_content_update {
+                if let Some(plugin) = plugin {
+                    plugin.pre_update(&plugin_ctx, item_id)?;
+                }
+
+                eprintln!("{}", "[-] Preparing workshop content...".cyan());
+
                 prepared_content_dir = tempfile::TempDir::new()?;
                 workshop::copy_filtered_content(
                     &content_path,
@@ -518,6 +549,12 @@ fn run() -> eyre::Result<()> {
             eprintln!("{}", "[+] Workshop item updated!".green());
 
             info!(item_id = file_id.0, "Workshop item updated");
+
+            if !command.no_content_update
+                && let Some(plugin) = plugin
+            {
+                plugin.post_update(&plugin_ctx, item_id)?;
+            }
 
             if update_tags {
                 if !cli.no_prompt && inquire::Confirm::new(

@@ -3,6 +3,12 @@ name = "steam-workshop-uploader"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = [
+    ".",
+    "plugins",
+]
+
 [[bin]]
 name = "workshop"
 path = "src/main.rs"
@@ -11,6 +17,7 @@ path = "src/main.rs"
 # It'll need to be shipped together with the executable
 
 [dependencies]
+plugins = { path = "plugins" }
 directories = "5.0"
 color-eyre = "0.6"
 fs-err = "3.0"
