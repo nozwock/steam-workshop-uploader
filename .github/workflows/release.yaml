@@ -2,6 +2,11 @@ name: Build and Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag name (e.g. 0.2.0)"
+        required: true
+        type: string
   push:
     tags:
       - "*"
@@ -88,6 +93,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: output/release/*
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           draft: ${{ env.IS_DRAFT }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
