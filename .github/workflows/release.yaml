@@ -71,7 +71,12 @@ jobs:
         run: |
           mkdir -p output
           cp target/"$ARCH"/release/"$BIN_FILENAME" output/
-          cp "$STEAMWORKS_LIB_PATH"/* output/ 
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Ignore *.lib on windows
+            cp "$STEAMWORKS_LIB_PATH"/*.dll output/
+          else
+            cp "$STEAMWORKS_LIB_PATH"/* output/
+          fi
 
           cd output
           BUNDLE_FILENAME="${BIN_NAME}-${ARCH}.zip" 
