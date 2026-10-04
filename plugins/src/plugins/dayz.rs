@@ -29,17 +29,14 @@ impl Plugin for DayZPlugin {
 
 register_plugin!(DayZPlugin);
 
-/// DayZ mods carry a `meta.cpp` in their root; the game uses `publishedid` in it to
-/// identify the workshop item a mod came from, so it must match the actual item id.
+/// DayZ mods carry a `meta.cpp` in their root; the game uses `publishedid` in it to identify the workshop item a mod
+/// came from, so it must match the actual item id.
 ///
-/// Creates the file in `content_path` if missing, otherwise only replaces the
-/// `publishedid` and `timestamp` values in-place, leaving other fields untouched.
-///
-/// `timestamp` is in .NET `DateTime.ToBinary()` (Utc) format — `0x4000000000000000 | ticks`
-/// where ticks are 100ns intervals since 0001-01-01 — matching what DayZ's own
-/// publishing tool writes.
+/// Creates the file in `content_path` if missing, otherwise only replaces the `publishedid` and `timestamp` values
+/// in-place, leaving other fields untouched.
 pub fn write_dayz_meta_cpp(content_path: impl AsRef<Path>, item_id: u64) -> eyre::Result<()> {
     let content_path = content_path.as_ref();
+    // `DateTime.ToBinary()` is what DayZ's own publishing tool seems to use.
     let timestamp = dotnet_to_binary_utc(SystemTime::now())?;
 
     let meta_cpp_path = content_path.join(META_CPP_FILENAME);
@@ -48,7 +45,7 @@ pub fn write_dayz_meta_cpp(content_path: impl AsRef<Path>, item_id: u64) -> eyre
         let source = upsert_meta_cpp_field(&source, "publishedid", &item_id.to_string());
         upsert_meta_cpp_field(&source, "timestamp", &timestamp.to_string())
     } else {
-        // Fall back to the content folder's name (minus the `@` prefix)
+        // Fallback to the content folder's name (minus the `@` prefix)
         let name = content_path
             .file_name()
             .and_then(|it| it.to_str())
@@ -64,7 +61,6 @@ pub fn write_dayz_meta_cpp(content_path: impl AsRef<Path>, item_id: u64) -> eyre
     Ok(())
 }
 
-/// Replaces the value of a `key = value;` line in-place, appending it if not present.
 fn upsert_meta_cpp_field(source: &str, key: &str, value: &str) -> String {
     let mut found = false;
     let mut lines: Vec<_> = source
