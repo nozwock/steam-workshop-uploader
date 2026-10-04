@@ -1,7 +1,6 @@
 mod cli;
 mod config;
 mod defines;
-mod ext;
 mod workshop;
 
 use std::{path::PathBuf, str::FromStr, sync::mpsc};
@@ -9,12 +8,11 @@ use std::{path::PathBuf, str::FromStr, sync::mpsc};
 use clap::Parser;
 use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
 use color_eyre::{
-    eyre::{self, ContextCompat, bail},
+    eyre::{self, ContextCompat, WrapErr, bail},
     owo_colors::OwoColorize,
 };
 use config::{AppConfig, Config, ConfigWithPath, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
-use ext::UpdateHandleBlockingExt;
 use itertools::Itertools;
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -23,6 +21,8 @@ use workshop::{
     Tag, check_tags_are_predefined, is_valid_description, is_valid_preview_type, is_valid_title,
     open_workshop_page,
 };
+
+use crate::workshop::SteamworksClient;
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -287,7 +287,7 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Creating workshop item...".cyan());
 
-            let client = workshop::steamworks_client_init(app_id)?;
+            let client = SteamworksClient::init(app_id)?;
             let (file_id, _) = workshop::create_item_with_metadata_file(
                 &client,
                 app_id,
@@ -330,14 +330,13 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Updating workshop item...".cyan());
 
-            setup_update_handle(handle, &command.workshop_item)?.submit_blocking(
-                &client,
-                command
-                    .workshop_item
-                    .change_log
-                    .as_ref()
-                    .map(|it| it.as_str()),
-            )?;
+            let handle = setup_update_handle(handle, &command.workshop_item)?;
+            let (tx, rx) = mpsc::channel();
+            handle.submit(command.workshop_item.change_log.as_deref(), move |result| {
+                _ = tx.send(result).inspect_err(|e| error!(%e));
+            });
+
+            let (file_id, _) = rx.recv()??;
 
             eprintln!("{}", "[+] Workshop item updated!".green());
 
@@ -412,7 +411,7 @@ fn run() -> eyre::Result<()> {
                 is_valid_description(description)?;
             }
 
-            let client = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
+            let client = SteamworksClient::init(workshop_item_cfg.app_id)?;
 
             let (tx, rx) = mpsc::channel();
             client
@@ -425,8 +424,8 @@ fn run() -> eyre::Result<()> {
                         .inspect_err(|e| error!(%e));
                 });
 
-            let item_info = run_callbacks_blocking!(client, rx).with_context(|| {
-                format!("Failed to receive query result for item id: {}", item_id)
+            let item_info = rx.recv()?.with_context(|| {
+                format!("Failed to receive query result for item id: {item_id}")
             })?;
 
             if !cli.no_prompt {
@@ -508,16 +507,13 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Updating workshop item...".cyan());
 
-            let (file_id, _) = setup_update_handle(handle, &command.workshop_item)?
-                .submit_blocking(
-                    &client,
-                    // This is such a horrible API, like `Option<&str>`? Seriously?
-                    command
-                        .workshop_item
-                        .change_log
-                        .as_ref()
-                        .map(|it| it.as_str()),
-                )?;
+            let handle = setup_update_handle(handle, &command.workshop_item)?;
+            let (tx, rx) = mpsc::channel();
+            handle.submit(command.workshop_item.change_log.as_deref(), move |result| {
+                _ = tx.send(result).inspect_err(|e| error!(%e));
+            });
+
+            let (file_id, _) = rx.recv()??;
 
             eprintln!("{}", "[+] Workshop item updated!".green());
 
@@ -626,7 +622,7 @@ fn run() -> eyre::Result<()> {
 
             if tags.is_empty()
                 && let Some(item_id) = item_id
-                && let Ok(client) = workshop::steamworks_client_init(app_id)
+                && let Ok(client) = SteamworksClient::init(app_id)
                 && let Ok(Some(fetched_tags)) = workshop::fetch_item_tags(&client, item_id)
                 && !fetched_tags.is_empty()
             {

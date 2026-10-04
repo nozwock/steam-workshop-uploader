@@ -1,6 +1,12 @@
-use std::{borrow::Cow, fmt, path::Path, sync::mpsc};
+use std::{
+    borrow::Cow,
+    fmt,
+    path::Path,
+    sync::{Arc, Mutex, Weak, mpsc},
+    time::Duration,
+};
 
-use color_eyre::eyre::{self, ContextCompat, bail};
+use color_eyre::eyre::{self, ContextCompat, WrapErr, bail};
 use fs_err::PathExt;
 use itertools::Itertools;
 use relative_path::PathExt as RelPathExt;
@@ -11,7 +17,6 @@ use tracing::{debug, error, info, warn};
 use crate::{
     config::{Config, WorkshopItemConfig},
     defines::{LOCALE_ENV_VARS, WORKSHOP_METADATA_FILENAME},
-    ext::{SteamworksClient, UGCBlockingExt},
 };
 
 #[serde_as]
@@ -136,43 +141,151 @@ pub fn is_valid_description(s: impl AsRef<str>) -> eyre::Result<()> {
     Ok(())
 }
 
-/// ## SAFETY
-/// Calls [`std::env::set_var`] and [`std::env::remove_var`].
-///
-/// Which means this function should only be called in a single-threaded context. So it's best to initialize the client
-/// before starting any other threads.
-pub fn steamworks_client_init(
-    app_id: impl Into<steamworks::AppId>,
-) -> eyre::Result<SteamworksClient> {
-    // `SteamAPI_Init` modifies the process environment (notably forcing LC_ALL=C), which breaks UTF-8 handling in child
-    // processes such as inquire::Editor.
-    // Record all locale-related variables before initialization to restore them afterwards.
-    let prev_locale_vars = LOCALE_ENV_VARS
-        .iter()
-        .map(|&var| (var, std::env::var_os(var)))
-        .collect::<Vec<_>>();
+static ACTIVE_SESSION: Mutex<Option<Weak<SteamworksClientInner>>> = Mutex::new(None);
 
-    let res = steamworks::Client::init_app(app_id);
+struct SteamworksClientInner {
+    app_id: steamworks::AppId,
+    client: steamworks::Client,
+    shutdown_tx: Mutex<Option<mpsc::Sender<()>>>,
+    thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
 
-    unsafe {
-        for (var, prev_val) in prev_locale_vars {
-            match prev_val {
-                Some(val) => std::env::set_var(var, val),
-                None => std::env::remove_var(var),
-            }
+impl Drop for SteamworksClientInner {
+    fn drop(&mut self) {
+        if let Ok(mut tx_guard) = self.shutdown_tx.lock()
+            && let Some(tx) = tx_guard.take()
+        {
+            let _ = tx.send(());
+        }
+
+        if let Ok(mut handle_guard) = self.thread_handle.lock()
+            && let Some(handle) = handle_guard.take()
+            && let Err(e) = handle.join()
+        {
+            tracing::warn!("Steamworks callback thread panicked on join: {e:?}");
+        }
+
+        if let Ok(mut session_guard) = ACTIVE_SESSION.lock() {
+            *session_guard = None;
         }
     }
+}
 
-    Ok(res.map_err(|err| {
-        eyre::eyre!(
-            "{}",
-            match err {
-                // Display for this variant gives "Some Other Error" which is not helpful. Have to get the inner string like this
-                steamworks::SteamAPIInitError::FailedGeneric(err) => err,
-                err => format!("{err}"),
+#[derive(Clone)]
+pub struct SteamworksClient {
+    inner: Arc<SteamworksClientInner>,
+}
+
+impl SteamworksClient {
+    const CALLBACK_INTERVAL: Duration = Duration::from_millis(50);
+
+    /// Initializes a `SteamworksClient` singleton for the given `AppId` and starts a background callback thread.
+    ///
+    /// If an active client for the same `AppId` already exists, a copy of the existing client is returned directly
+    /// without re-initializing Steamworks.
+    ///
+    /// ## SAFETY
+    /// When initializing a fresh client, this function calls [`std::env::set_var`] and [`std::env::remove_var`] to
+    /// preserve and restore process locale variables across `SteamAPI_Init` (which forces `LC_ALL=C`).
+    ///
+    /// Which means fresh initialization should only be called in a single-threaded context. So it's best to initialize
+    /// the client before starting any other threads.
+    pub fn init(app_id: impl Into<steamworks::AppId>) -> eyre::Result<Self> {
+        let app_id = app_id.into();
+        let mut session_guard = ACTIVE_SESSION
+            .lock()
+            .map_err(|e| eyre::eyre!("Failed to acquire steamworks session lock: {e}"))?;
+
+        if let Some(weak) = &*session_guard
+            && let Some(active) = weak.upgrade()
+        {
+            if active.app_id == app_id {
+                return Ok(Self { inner: active });
+            } else {
+                bail!(
+                    "Cannot initialize Steamworks for AppId {}: an active session for AppId {} already exists. \
+                    Explicitly drop all the active clients before initializing a different AppId.",
+                    app_id.0,
+                    active.app_id.0
+                );
             }
-        )
-    })?)
+        } else {
+            *session_guard = None;
+        }
+
+        // `SteamAPI_Init` modifies the process environment (notably forcing LC_ALL=C), which breaks UTF-8 handling in child
+        // processes such as inquire::Editor.
+        // Record all locale-related variables before initialization to restore them afterwards.
+        let prev_locale_vars = LOCALE_ENV_VARS
+            .iter()
+            .map(|&var| (var, std::env::var_os(var)))
+            .collect::<Vec<_>>();
+
+        let res = steamworks::Client::init_app(app_id);
+
+        unsafe {
+            for (var, prev_val) in prev_locale_vars {
+                match prev_val {
+                    Some(val) => std::env::set_var(var, val),
+                    None => std::env::remove_var(var),
+                }
+            }
+        }
+
+        let client = res.map_err(|err| {
+            eyre::eyre!(
+                "{}",
+                match err {
+                    // Display for this variant gives "Some Other Error" which is not helpful. Have to get the inner
+                    // string like this
+                    steamworks::SteamAPIInitError::FailedGeneric(err) => err,
+                    err => format!("{err}"),
+                }
+            )
+        })?;
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let thread_client = client.clone();
+        let thread_handle = std::thread::Builder::new()
+            .name("steamworks-callbacks".to_string())
+            .spawn(move || {
+                loop {
+                    thread_client.run_callbacks();
+                    match shutdown_rx.recv_timeout(Self::CALLBACK_INTERVAL) {
+                        Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    }
+                }
+            })
+            .context("Failed to spawn steamworks callback thread")?;
+
+        let inner = Arc::new(SteamworksClientInner {
+            app_id,
+            client,
+            shutdown_tx: Mutex::new(Some(shutdown_tx)),
+            thread_handle: Mutex::new(Some(thread_handle)),
+        });
+
+        *session_guard = Some(Arc::downgrade(&inner));
+
+        Ok(Self { inner })
+    }
+}
+
+impl std::ops::Deref for SteamworksClient {
+    type Target = steamworks::Client;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner.client
+    }
+}
+
+impl fmt::Debug for SteamworksClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SteamworksClient")
+            .field("app_id", &self.inner.app_id)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Both `from` and `to` are paths to directory.
@@ -236,10 +349,15 @@ pub fn create_item_with_metadata_file(
     tags: &[Tag],
 ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
     let app_id = app_id.into();
-    let (file_id, agreement) =
-        client
-            .ugc()
-            .create_item_blocking(client, app_id, steamworks::FileType::Community)?;
+
+    let (tx, rx) = mpsc::channel();
+    client
+        .ugc()
+        .create_item(app_id, steamworks::FileType::Community, move |result| {
+            _ = tx.send(result).inspect_err(|e| error!(%e));
+        });
+
+    let (file_id, agreement) = rx.recv()??;
 
     info!(item_id = file_id.0, "Workshop item created");
 
@@ -264,7 +382,8 @@ pub fn fetch_item_tags(client: &SteamworksClient, item_id: u64) -> eyre::Result<
                 .inspect_err(|e| error!(%e));
         });
 
-    let item_info = crate::run_callbacks_blocking!(client, rx)
+    let item_info = rx
+        .recv()?
         .with_context(|| format!("Failed to receive query result for item id: {item_id}"))?;
 
     let tags = item_info
