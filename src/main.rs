@@ -144,9 +144,9 @@ fn run() -> eyre::Result<()> {
 
     /// Note: Doesn't set `content_path`
     fn setup_update_handle(
-        handle: steamworks::UpdateHandle<steamworks::ClientManager>,
+        handle: steamworks::UpdateHandle,
         workshop_item: &WorkshopItemArgs,
-    ) -> eyre::Result<steamworks::UpdateHandle<steamworks::ClientManager>> {
+    ) -> eyre::Result<steamworks::UpdateHandle> {
         let mut handle = handle
             .visibility(workshop_item.visibility.unwrap_or_default().into())
             .tags(workshop_item.tags.iter().collect_vec(), false);
@@ -287,10 +287,9 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Creating workshop item...".cyan());
 
-            let (client, single) = workshop::steamworks_client_init(app_id)?;
+            let client = workshop::steamworks_client_init(app_id)?;
             let (file_id, _) = workshop::create_item_with_metadata_file(
                 &client,
-                &single,
                 app_id,
                 &content_path,
                 &command.workshop_item.tags,
@@ -332,7 +331,7 @@ fn run() -> eyre::Result<()> {
             eprintln!("{}", "[-] Updating workshop item...".cyan());
 
             setup_update_handle(handle, &command.workshop_item)?.submit_blocking(
-                &single,
+                &client,
                 command
                     .workshop_item
                     .change_log
@@ -413,7 +412,7 @@ fn run() -> eyre::Result<()> {
                 is_valid_description(description)?;
             }
 
-            let (client, single) = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
+            let client = workshop::steamworks_client_init(workshop_item_cfg.app_id)?;
 
             let (tx, rx) = mpsc::channel();
             client
@@ -426,7 +425,7 @@ fn run() -> eyre::Result<()> {
                         .inspect_err(|e| error!(%e));
                 });
 
-            let item_info = run_callbacks_blocking!(single, rx).with_context(|| {
+            let item_info = run_callbacks_blocking!(client, rx).with_context(|| {
                 format!("Failed to receive query result for item id: {}", item_id)
             })?;
 
@@ -511,7 +510,7 @@ fn run() -> eyre::Result<()> {
 
             let (file_id, _) = setup_update_handle(handle, &command.workshop_item)?
                 .submit_blocking(
-                    &single,
+                    &client,
                     // This is such a horrible API, like `Option<&str>`? Seriously?
                     command
                         .workshop_item
@@ -627,8 +626,8 @@ fn run() -> eyre::Result<()> {
 
             if tags.is_empty()
                 && let Some(item_id) = item_id
-                && let Ok((client, single)) = workshop::steamworks_client_init(app_id)
-                && let Ok(Some(fetched_tags)) = workshop::fetch_item_tags(&client, &single, item_id)
+                && let Ok(client) = workshop::steamworks_client_init(app_id)
+                && let Ok(Some(fetched_tags)) = workshop::fetch_item_tags(&client, item_id)
                 && !fetched_tags.is_empty()
             {
                 eprintln!(

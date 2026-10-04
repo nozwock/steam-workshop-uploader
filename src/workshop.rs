@@ -11,7 +11,7 @@ use tracing::{debug, error, info, warn};
 use crate::{
     config::{Config, WorkshopItemConfig},
     defines::{LOCALE_ENV_VARS, WORKSHOP_METADATA_FILENAME},
-    ext::{SteamworksClient, SteamworksSingleClient, UGCBlockingExt},
+    ext::{SteamworksClient, UGCBlockingExt},
 };
 
 #[serde_as]
@@ -143,7 +143,7 @@ pub fn is_valid_description(s: impl AsRef<str>) -> eyre::Result<()> {
 /// before starting any other threads.
 pub fn steamworks_client_init(
     app_id: impl Into<steamworks::AppId>,
-) -> eyre::Result<(SteamworksClient, SteamworksSingleClient)> {
+) -> eyre::Result<SteamworksClient> {
     // `SteamAPI_Init` modifies the process environment (notably forcing LC_ALL=C), which breaks UTF-8 handling in child
     // processes such as inquire::Editor.
     // Record all locale-related variables before initialization to restore them afterwards.
@@ -231,7 +231,6 @@ where
 
 pub fn create_item_with_metadata_file(
     client: &SteamworksClient,
-    single: &SteamworksSingleClient,
     app_id: impl Into<steamworks::AppId>,
     content_path: impl AsRef<Path>,
     tags: &[Tag],
@@ -240,7 +239,7 @@ pub fn create_item_with_metadata_file(
     let (file_id, agreement) =
         client
             .ugc()
-            .create_item_blocking(single, app_id, steamworks::FileType::Community)?;
+            .create_item_blocking(client, app_id, steamworks::FileType::Community)?;
 
     info!(item_id = file_id.0, "Workshop item created");
 
@@ -254,11 +253,7 @@ pub fn create_item_with_metadata_file(
     Ok((file_id, agreement))
 }
 
-pub fn fetch_item_tags(
-    client: &SteamworksClient,
-    single: &SteamworksSingleClient,
-    item_id: u64,
-) -> eyre::Result<Option<Vec<Tag>>> {
+pub fn fetch_item_tags(client: &SteamworksClient, item_id: u64) -> eyre::Result<Option<Vec<Tag>>> {
     let (tx, rx) = mpsc::channel();
     client
         .ugc()
@@ -269,7 +264,7 @@ pub fn fetch_item_tags(
                 .inspect_err(|e| error!(%e));
         });
 
-    let item_info = crate::run_callbacks_blocking!(single, rx)
+    let item_info = crate::run_callbacks_blocking!(client, rx)
         .with_context(|| format!("Failed to receive query result for item id: {item_id}"))?;
 
     let tags = item_info
