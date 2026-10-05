@@ -25,7 +25,8 @@ jobs:
           - os: windows-latest
             rust-target: x86_64-pc-windows-msvc
           - os: macos-latest
-            rust-target: x86_64-apple-darwin
+            rust-target: aarch64-apple-darwin
+            bundle-arch: universal-apple-darwin
 
     defaults:
       run:
@@ -45,11 +46,17 @@ jobs:
           # Prevent RUSTFLAGS from overriding `.cargo/config.toml`
           rustflags: ""
 
+      - name: Add target for universal macOS
+        if: matrix.os == 'macos-latest'
+        run: rustup target add x86_64-apple-darwin
+
       - name: Get Target Architecture
         run: |
           # ARCH="$(cargo rustc -- -vV | grep 'host:' | cut -d ' ' -f 2)"
           ARCH="${{ matrix.rust-target }}"
+          BUNDLE_ARCH="${{ matrix.bundle-arch || matrix.rust-target }}"
           echo "ARCH=$ARCH" >> $GITHUB_ENV
+          echo "BUNDLE_ARCH=$BUNDLE_ARCH" >> $GITHUB_ENV
 
       # Build and Find the Steamworks SDK library path
       - name: Build & Get Steamworks SDK library path
@@ -57,6 +64,10 @@ jobs:
         run: |
           STEAMWORKS_LIB_PATH="$(cargo build --target "$ARCH" --release --bin "$BIN_NAME" --message-format json | jq -r 'select(.reason == "build-script-executed" and (.package_id | contains("steamworks-sys"))) | .out_dir')"
           echo "STEAMWORKS_LIB_PATH=$STEAMWORKS_LIB_PATH" >> $GITHUB_ENV
+
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cargo build --target x86_64-apple-darwin --release --bin "$BIN_NAME"
+          fi
 
       - name: Set Binary Filename
         run: |
@@ -70,16 +81,23 @@ jobs:
       - name: Create ZIP file
         run: |
           mkdir -p output
-          cp target/"$ARCH"/release/"$BIN_FILENAME" output/
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            lipo -create -output output/"$BIN_FILENAME" \
+              target/"$ARCH"/release/"$BIN_FILENAME" \
+              target/x86_64-apple-darwin/release/"$BIN_FILENAME"
+            lipo -info output/"$BIN_FILENAME"
+            cp "$STEAMWORKS_LIB_PATH"/* output/
+          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/"$ARCH"/release/"$BIN_FILENAME" output/
             # Ignore *.lib on windows
             cp "$STEAMWORKS_LIB_PATH"/*.dll output/
           else
+            cp target/"$ARCH"/release/"$BIN_FILENAME" output/
             cp "$STEAMWORKS_LIB_PATH"/* output/
           fi
 
           cd output
-          BUNDLE_FILENAME="${BIN_NAME}-${ARCH}.zip" 
+          BUNDLE_FILENAME="${BIN_NAME}-${BUNDLE_ARCH}.zip"
           7z a "$BUNDLE_FILENAME" *
 
           mkdir release
