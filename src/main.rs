@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod defines;
+pub mod markdown;
 mod workshop;
 
 use std::{path::PathBuf, str::FromStr, sync::mpsc};
