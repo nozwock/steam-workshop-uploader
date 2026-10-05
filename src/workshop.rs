@@ -371,7 +371,7 @@ pub fn create_item_with_metadata_file(
     Ok((file_id, agreement))
 }
 
-pub fn fetch_item_tags(client: &SteamworksClient, item_id: u64) -> eyre::Result<Option<Vec<Tag>>> {
+pub fn fetch_item_tags(client: &SteamworksClient, item_id: u64) -> eyre::Result<Vec<Tag>> {
     let (tx, rx) = mpsc::channel();
     client
         .ugc()
@@ -392,7 +392,7 @@ pub fn fetch_item_tags(client: &SteamworksClient, item_id: u64) -> eyre::Result<
         .filter_map(|t| Tag::new(t).ok())
         .collect();
 
-    Ok(Some(tags))
+    Ok(tags)
 }
 
 pub fn open_workshop_page(item_id: u64) -> eyre::Result<()> {
