@@ -362,10 +362,8 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Preparing workshop content...".cyan());
 
-            let prepared_content_dir = tempfile::TempDir::new()?;
-            workshop::copy_filtered_content(
+            let prepared_content_dir = workshop::stage_filtered_content(
                 &content_path,
-                prepared_content_dir.path(),
                 Some(command.workshop_item.globs.as_slice()),
                 Some(
                     command
@@ -593,10 +591,8 @@ fn run() -> eyre::Result<()> {
 
                 eprintln!("{}", "[-] Preparing workshop content...".cyan());
 
-                prepared_content_dir = tempfile::TempDir::new()?;
-                workshop::copy_filtered_content(
+                prepared_content_dir = workshop::stage_filtered_content(
                     &content_path,
-                    prepared_content_dir.path(),
                     Some(command.workshop_item.globs.as_slice()),
                     Some(
                         command

@@ -288,19 +288,34 @@ impl fmt::Debug for SteamworksClient {
     }
 }
 
-/// Both `from` and `to` are paths to directory.
-/// Make a copy of data in `from` in `to` while ignoring files matched in the glob.
-pub fn copy_filtered_content<I, O>(
-    from: I,
-    to: O,
+/// Attempts to create the directory in the parent of `content_path` so it resides on the same filesystem, enabling
+/// hardlinks.
+fn create_staging_dir(content_path: impl AsRef<Path>) -> eyre::Result<tempfile::TempDir> {
+    let content_path = content_path
+        .as_ref()
+        .fs_err_canonicalize()
+        .unwrap_or_else(|_| content_path.as_ref().to_path_buf());
+
+    if let Some(parent) = content_path.parent()
+        && parent.is_dir()
+        && let Ok(dir) = tempfile::Builder::new()
+            .prefix(".workshop_staging_")
+            .tempdir_in(parent)
+    {
+        return Ok(dir);
+    }
+
+    Ok(tempfile::TempDir::new()?)
+}
+
+/// Attempts to hardlink files in `content_dir` to temporary staging directory while ignoring files matched in the glob.
+/// Falls back to a standard copy if hardlinking fails (e.g. crossing filesystem boundaries).
+pub fn stage_filtered_content(
+    content_dir: impl AsRef<Path>,
     globs: Option<&[impl AsRef<str>]>,
     ignore_files: Option<&[impl AsRef<Path>]>,
-) -> eyre::Result<()>
-where
-    I: AsRef<Path>,
-    O: AsRef<Path>,
-{
-    let mut overrides = ignore::overrides::OverrideBuilder::new(from.as_ref());
+) -> eyre::Result<tempfile::TempDir> {
+    let mut overrides = ignore::overrides::OverrideBuilder::new(content_dir.as_ref());
     overrides.add(&format!("!{}", WORKSHOP_METADATA_FILENAME))?;
 
     if let Some(globs) = globs {
@@ -309,7 +324,7 @@ where
         }
     }
 
-    let mut walk_builder = ignore::WalkBuilder::new(from.as_ref());
+    let mut walk_builder = ignore::WalkBuilder::new(content_dir.as_ref());
     walk_builder.overrides(overrides.build()?);
 
     if let Some(ignore_files) = ignore_files {
@@ -318,6 +333,7 @@ where
         }
     }
 
+    let staged_dir = create_staging_dir(content_dir.as_ref())?;
     for entry in walk_builder
         .build()
         .inspect(|it| {
@@ -327,19 +343,24 @@ where
         .filter(|it| it.depth() != 0)
     {
         if let Some(file_type) = entry.file_type() {
-            let relative_entry_path = entry.path().relative_to(&from.as_ref())?;
-            let proxy_path = relative_entry_path.to_path(&to.as_ref());
+            let relative_entry_path = entry.path().relative_to(&content_dir.as_ref())?;
+            let proxy_path = relative_entry_path.to_path(&staged_dir.as_ref());
 
             if file_type.is_dir() {
                 fs_err::create_dir_all(proxy_path)?;
             } else if file_type.is_file() {
                 debug!(file = %relative_entry_path, "Adding to item content");
-                fs_err::copy(entry.path().fs_err_canonicalize()?, &proxy_path)?;
+                let source = entry.path().fs_err_canonicalize()?;
+                // Symlinking doesn't seem to work with ISteamUGC SetItemContent
+                if let Err(err) = fs_err::hard_link(&source, &proxy_path) {
+                    debug!(%err, file = %relative_entry_path, "Hardlink failed, falling back to copy");
+                    fs_err::copy(&source, &proxy_path)?;
+                }
             }
         }
     }
 
-    Ok(())
+    Ok(staged_dir)
 }
 
 pub fn create_item_with_metadata_file(
