@@ -102,11 +102,29 @@ jobs:
 
           mkdir release
           mv "$BUNDLE_FILENAME" release/
+          echo "BUNDLE_FILENAME=$BUNDLE_FILENAME" >> $GITHUB_ENV
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.BUNDLE_FILENAME }}
+          path: output/release/${{ env.BUNDLE_FILENAME }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
-          files: output/release/*
+          files: dist/*
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           generate_release_notes: true
