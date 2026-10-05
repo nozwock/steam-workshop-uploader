@@ -85,20 +85,12 @@ jobs:
           mkdir release
           mv "$BUNDLE_FILENAME" release/
 
-      - name: Set Release Type
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "IS_DRAFT=false" >> $GITHUB_ENV
-          else
-            echo "IS_DRAFT=true" >> $GITHUB_ENV
-          fi
-
-      # Create a draft release on GitHub
-      - name: Create a draft release
+      - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           files: output/release/*
           tag_name: ${{ inputs.tag_name || github.ref_name }}
-          draft: ${{ env.IS_DRAFT }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
