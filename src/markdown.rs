@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use color_eyre::eyre::{self, WrapErr};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 /// Render GitHub Flavored Markdown to Steam's markup format.
@@ -12,6 +15,42 @@ pub fn markdown_to_steam(markdown: &str) -> String {
     let parser = Parser::new_ext(markdown, options);
     let mut renderer = SteamRenderer::new();
     renderer.render(parser)
+}
+
+pub fn is_markdown_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown"))
+        .unwrap_or(false)
+}
+
+pub fn file_or_text_to_steam(
+    text: Option<String>,
+    filepath: Option<&Path>,
+    force_markdown: bool,
+) -> eyre::Result<Option<String>> {
+    if let Some(path) = filepath {
+        let content = fs_err::read_to_string(path)
+            .wrap_err_with(|| format!("Failed to read file: {path:?}"))?;
+        let is_md = force_markdown || is_markdown_file(path);
+        let result = if is_md {
+            markdown_to_steam(&content)
+        } else {
+            content
+        };
+        return Ok(Some(result));
+    }
+
+    if let Some(text) = text {
+        let result = if force_markdown {
+            markdown_to_steam(&text)
+        } else {
+            text
+        };
+        return Ok(Some(result));
+    }
+
+    Ok(None)
 }
 
 struct SteamRenderer {

@@ -27,8 +27,19 @@ pub enum Command {
 pub struct WorkshopItemArgs {
     #[arg(long)]
     pub title: Option<String>,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "description_file")]
     pub description: Option<String>,
+    /// Automatically converted from Markdown to Steam markup if extension is .md or .markdown.
+    #[arg(
+        long = "description-file",
+        value_name = "FILE",
+        value_parser = clap::value_parser!(ClioPath)
+            .exists()
+            .is_file()
+            .map(|it| it.to_path_buf()),
+        conflicts_with = "description"
+    )]
+    pub description_file: Option<PathBuf>,
     #[arg(
         long = "content",
         value_name = "DIR",
@@ -53,8 +64,22 @@ pub struct WorkshopItemArgs {
         .map(|it| it.to_path_buf())
     )]
     pub preview_path: Option<PathBuf>,
-    #[arg(short = 'm', long)]
+    #[arg(short = 'm', long, conflicts_with = "change_log_file")]
     pub change_log: Option<String>,
+    /// Automatically converted from Markdown to Steam markup if extension is .md or .markdown.
+    #[arg(
+        long = "change-log-file",
+        value_name = "FILE",
+        value_parser = clap::value_parser!(ClioPath)
+            .exists()
+            .is_file()
+            .map(|it| it.to_path_buf()),
+        conflicts_with = "change_log"
+    )]
+    pub change_log_file: Option<PathBuf>,
+    /// Treat description and changelog inputs as Markdown to be converted to Steam markup.
+    #[arg(long)]
+    pub markdown: bool,
     #[arg(short, long = "glob", value_name = "GLOB")]
     pub globs: Vec<String>,
     #[arg(

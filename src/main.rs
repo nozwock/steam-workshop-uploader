@@ -253,6 +253,16 @@ fn run() -> eyre::Result<()> {
             if let Some(title) = &command.workshop_item.title {
                 is_valid_title(title)?;
             }
+            command.workshop_item.description = markdown::file_or_text_to_steam(
+                command.workshop_item.description.take(),
+                command.workshop_item.description_file.as_deref(),
+                command.workshop_item.markdown,
+            )?;
+            command.workshop_item.change_log = markdown::file_or_text_to_steam(
+                command.workshop_item.change_log.take(),
+                command.workshop_item.change_log_file.as_deref(),
+                command.workshop_item.markdown,
+            )?;
             if let Some(description) = &command.workshop_item.description {
                 is_valid_description(description)?;
             }
@@ -267,12 +277,32 @@ fn run() -> eyre::Result<()> {
                         .prompt_skippable()?;
                 }
                 if command.workshop_item.description.is_none() {
-                    command.workshop_item.description = inquire::Editor::new("Description")
-                        .with_validator(|s: &str| match is_valid_description(s) {
-                            Ok(_) => Ok(inquire::validator::Validation::Valid),
-                            Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                    let is_md = command.workshop_item.markdown;
+                    let mut editor = inquire::Editor::new("Description");
+                    if is_md {
+                        editor = editor
+                            .with_help_message("Markdown input will be converted to Steam markup");
+                    }
+                    command.workshop_item.description = editor
+                        .with_validator(move |s: &str| {
+                            let s = if is_md {
+                                markdown::markdown_to_steam(s)
+                            } else {
+                                s.into()
+                            };
+                            match is_valid_description(&s) {
+                                Ok(_) => Ok(inquire::validator::Validation::Valid),
+                                Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                            }
                         })
-                        .prompt_skippable()?;
+                        .prompt_skippable()?
+                        .map(|s| {
+                            if is_md {
+                                markdown::markdown_to_steam(&s)
+                            } else {
+                                s
+                            }
+                        });
                 }
                 if command.workshop_item.tags.is_empty() {
                     let valid_tags = config.inner.valid_tags.get(&app_id).map(|v| v.as_slice());
@@ -288,8 +318,19 @@ fn run() -> eyre::Result<()> {
                         visibility_prompt.clone().prompt_skippable()?;
                 }
                 if command.workshop_item.change_log.is_none() {
-                    command.workshop_item.change_log =
-                        inquire::Editor::new("Changelog").prompt_skippable()?;
+                    let is_md = command.workshop_item.markdown;
+                    let mut editor = inquire::Editor::new("Changelog");
+                    if is_md {
+                        editor = editor
+                            .with_help_message("Markdown input will be converted to Steam markup");
+                    }
+                    command.workshop_item.change_log = editor.prompt_skippable()?.map(|s| {
+                        if is_md {
+                            markdown::markdown_to_steam(&s)
+                        } else {
+                            s
+                        }
+                    });
                 }
             }
 
@@ -435,6 +476,16 @@ fn run() -> eyre::Result<()> {
             if let Some(title) = &command.workshop_item.title {
                 is_valid_title(title)?;
             }
+            command.workshop_item.description = markdown::file_or_text_to_steam(
+                command.workshop_item.description.take(),
+                command.workshop_item.description_file.as_deref(),
+                command.workshop_item.markdown,
+            )?;
+            command.workshop_item.change_log = markdown::file_or_text_to_steam(
+                command.workshop_item.change_log.take(),
+                command.workshop_item.change_log_file.as_deref(),
+                command.workshop_item.markdown,
+            )?;
             if let Some(description) = &command.workshop_item.description {
                 is_valid_description(description)?;
             }
@@ -467,13 +518,33 @@ fn run() -> eyre::Result<()> {
                         .prompt_skippable()?;
                 }
                 if command.workshop_item.description.is_none() {
-                    command.workshop_item.description = inquire::Editor::new("Description")
-                        .with_predefined_text(&item_info.description)
-                        .with_validator(|s: &str| match is_valid_description(s) {
-                            Ok(_) => Ok(inquire::validator::Validation::Valid),
-                            Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                    let is_md = command.workshop_item.markdown;
+                    let mut editor = inquire::Editor::new("Description")
+                        .with_predefined_text(&item_info.description);
+                    if is_md {
+                        editor = editor
+                            .with_help_message("Markdown input will be converted to Steam markup");
+                    }
+                    command.workshop_item.description = editor
+                        .with_validator(move |s: &str| {
+                            let s = if is_md {
+                                markdown::markdown_to_steam(s)
+                            } else {
+                                s.to_string()
+                            };
+                            match is_valid_description(&s) {
+                                Ok(_) => Ok(inquire::validator::Validation::Valid),
+                                Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
+                            }
                         })
-                        .prompt_skippable()?;
+                        .prompt_skippable()?
+                        .map(|s| {
+                            if is_md {
+                                markdown::markdown_to_steam(&s)
+                            } else {
+                                s
+                            }
+                        });
                 }
                 if !command.no_content_update {
                     command.no_content_update =
@@ -484,8 +555,19 @@ fn run() -> eyre::Result<()> {
                             .unwrap_or_default();
                 }
                 if !command.no_content_update && command.workshop_item.change_log.is_none() {
-                    command.workshop_item.change_log =
-                        inquire::Editor::new("Changelog").prompt_skippable()?;
+                    let is_md = command.workshop_item.markdown;
+                    let mut editor = inquire::Editor::new("Changelog");
+                    if is_md {
+                        editor = editor
+                            .with_help_message("Markdown input will be converted to Steam markup");
+                    }
+                    command.workshop_item.change_log = editor.prompt_skippable()?.map(|s| {
+                        if is_md {
+                            markdown::markdown_to_steam(&s)
+                        } else {
+                            s
+                        }
+                    });
                 }
             }
 
