@@ -4,7 +4,7 @@ mod defines;
 pub mod markdown;
 mod workshop;
 
-use std::{path::PathBuf, str::FromStr, sync::mpsc};
+use std::{io::IsTerminal, path::PathBuf, str::FromStr, sync::mpsc};
 
 use clap::Parser;
 use cli::{Cli, PublishedFileVisibility, WorkshopItemArgs};
@@ -167,6 +167,116 @@ fn run() -> eyre::Result<()> {
         }
 
         Ok(handle)
+    }
+
+    fn create_item_update_progress_reporter() -> (
+        indicatif::ProgressBar,
+        impl FnMut((steamworks::UpdateStatus, u64, u64)),
+    ) {
+        use steamworks::UpdateStatus;
+
+        let is_terminal = std::io::stderr().is_terminal();
+        let draw_target = if is_terminal {
+            indicatif::ProgressDrawTarget::stderr()
+        } else {
+            indicatif::ProgressDrawTarget::hidden()
+        };
+
+        let spinner_style =
+            indicatif::ProgressStyle::with_template("{spinner:.cyan} [{elapsed_precise}] {msg}")
+                .unwrap_or_else(|_| indicatif::ProgressStyle::default_spinner());
+
+        let bar_style = indicatif::ProgressStyle::with_template(
+            "{spinner:.cyan} [{elapsed_precise}] [{bar:30.cyan/blue}] {bytes}/{total_bytes} ({percent}%) {msg}",
+        )
+        .unwrap_or_else(|_| indicatif::ProgressStyle::default_bar());
+
+        let pb = indicatif::ProgressBar::with_draw_target(None, draw_target);
+        if is_terminal {
+            pb.set_style(spinner_style.clone());
+            pb.set_message("Preparing item update...");
+        }
+
+        let mut current_status = UpdateStatus::Invalid;
+        let mut in_bar_mode = false;
+        let mut next_milestone = 25u64;
+        let pb_clone = pb.clone();
+
+        let reporter = move |(status, progress, total): (UpdateStatus, u64, u64)| {
+            if status != current_status {
+                current_status = status;
+                next_milestone = 25;
+
+                let msg = match status {
+                    UpdateStatus::Invalid => "Initializing upload...",
+                    UpdateStatus::PreparingConfig => "Preparing configuration...",
+                    UpdateStatus::PreparingContent => "Preparing content files...",
+                    UpdateStatus::UploadingContent => "Uploading content files...",
+                    UpdateStatus::UploadingPreviewFile => "Uploading preview image...",
+                    UpdateStatus::CommittingChanges => "Committing changes to Steam...",
+                };
+
+                if is_terminal {
+                    match status {
+                        UpdateStatus::PreparingConfig
+                        | UpdateStatus::PreparingContent
+                        | UpdateStatus::CommittingChanges => {
+                            if in_bar_mode {
+                                pb_clone.set_style(spinner_style.clone());
+                                in_bar_mode = false;
+                            }
+                        }
+                        _ => {}
+                    }
+                    pb_clone.set_message(msg);
+                } else {
+                    eprintln!("{}", format!("[-] {msg}").cyan());
+                }
+            }
+
+            match status {
+                UpdateStatus::UploadingContent | UpdateStatus::UploadingPreviewFile => {
+                    if total > 0 {
+                        if is_terminal {
+                            if !in_bar_mode {
+                                pb_clone.set_style(bar_style.clone());
+                                in_bar_mode = true;
+                            }
+                            pb_clone.set_length(total);
+                            pb_clone.set_position(progress);
+                        } else {
+                            let percentage = (progress * 100) / total;
+                            let msg = match status {
+                                UpdateStatus::UploadingContent => "Uploading content files",
+                                UpdateStatus::UploadingPreviewFile => "Uploading preview image",
+                                _ => unreachable!(),
+                            };
+                            while next_milestone <= 100 && percentage >= next_milestone {
+                                eprintln!(
+                                    "{}",
+                                    format!(
+                                        "{} {msg}: {}% ({}/{})",
+                                        "[-]",
+                                        next_milestone,
+                                        indicatif::HumanBytes(progress),
+                                        indicatif::HumanBytes(total),
+                                    )
+                                    .cyan()
+                                );
+                                next_milestone += 25;
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    if is_terminal {
+                        pb_clone.tick();
+                    }
+                }
+            }
+        };
+
+        (pb, reporter)
     }
 
     let visibility_prompt = inquire::Select::new(
@@ -388,12 +498,14 @@ fn run() -> eyre::Result<()> {
             eprintln!("{}", "[-] Updating workshop item...".cyan());
 
             let handle = setup_update_handle(handle, &command.workshop_item)?;
-            let (tx, rx) = mpsc::channel();
-            handle.submit(command.workshop_item.change_log.as_deref(), move |result| {
-                _ = tx.send(result).inspect_err(|e| error!(%e));
-            });
-
-            let (file_id, _) = rx.recv()??;
+            let (pb, reporter) = create_item_update_progress_reporter();
+            let update_res = workshop::submit_item_update(
+                handle,
+                command.workshop_item.change_log.as_deref(),
+                Some(reporter),
+            );
+            pb.finish_and_clear();
+            let (file_id, _) = update_res?;
 
             eprintln!("{}", "[+] Workshop item updated!".green());
 
@@ -435,8 +547,6 @@ fn run() -> eyre::Result<()> {
                 );
                 quit::with_code(exitcode::USAGE as u8);
             }
-
-            // todo: item update status? EItemUpdateStatus
 
             let workshop_item_cfg =
                 WorkshopItemConfig::try_load_path(content_path.join(WORKSHOP_METADATA_FILENAME))?;
@@ -618,12 +728,14 @@ fn run() -> eyre::Result<()> {
             eprintln!("{}", "[-] Updating workshop item...".cyan());
 
             let handle = setup_update_handle(handle, &command.workshop_item)?;
-            let (tx, rx) = mpsc::channel();
-            handle.submit(command.workshop_item.change_log.as_deref(), move |result| {
-                _ = tx.send(result).inspect_err(|e| error!(%e));
-            });
-
-            let (file_id, _) = rx.recv()??;
+            let (pb, reporter) = create_item_update_progress_reporter();
+            let update_res = workshop::submit_item_update(
+                handle,
+                command.workshop_item.change_log.as_deref(),
+                Some(reporter),
+            );
+            pb.finish_and_clear();
+            let (file_id, _) = update_res?;
 
             eprintln!("{}", "[+] Workshop item updated!".green());
 

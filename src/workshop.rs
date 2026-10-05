@@ -392,6 +392,41 @@ pub fn create_item_with_metadata_file(
     Ok((file_id, agreement))
 }
 
+/// Submits an item update to Steam, optionally invoking a reporter callback with progress updates.
+///
+/// See https://partner.steamgames.com/doc/api/ISteamUGC#GetItemUpdateProgress.
+pub fn submit_item_update<F>(
+    handle: steamworks::UpdateHandle,
+    change_note: Option<&str>,
+    mut reporter: Option<F>,
+) -> eyre::Result<(steamworks::PublishedFileId, bool)>
+where
+    F: FnMut((steamworks::UpdateStatus, u64, u64)),
+{
+    let (tx, rx) = mpsc::channel();
+    let watch_handle = handle.submit(change_note, move |result| {
+        _ = tx.send(result).inspect_err(|e| error!(%e));
+    });
+
+    if let Some(callback) = reporter.as_mut() {
+        callback(watch_handle.progress());
+    }
+
+    loop {
+        match rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(result) => return Ok(result?),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if let Some(callback) = reporter.as_mut() {
+                    callback(watch_handle.progress());
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                bail!("Steamworks update callback channel disconnected unexpectedly");
+            }
+        }
+    }
+}
+
 pub fn fetch_item_tags(client: &SteamworksClient, item_id: u64) -> eyre::Result<Vec<Tag>> {
     let (tx, rx) = mpsc::channel();
     client
