@@ -15,12 +15,12 @@ path = "src/main.rs"
 
 [dependencies]
 plugins = { path = "plugins" }
-directories = "5.0"
+directories = "6.0"
 color-eyre = "0.6"
 fs-err = "3.0"
 clap = { version = "4.5", features = ["derive"] }
-inquire = { version = "0.7", features = ["editor"] }
-itertools = "0.14"
+inquire = { version = "0.9", features = ["editor"] }
+itertools = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
@@ -31,13 +31,13 @@ steamworks-sys = "0.13.0"
 ignore = "0.4.23"
 better_default = "1.0.5"
 serde = { version = "1.0.217", features = ["derive"] }
-confy = "0.6.1"
+confy = "2.0"
 tempfile = "3.15.0"
-relative-path = "1.9.3"
-strum = { version = "0.26.3", features = ["derive"] }
+relative-path = "2.0"
+strum = { version = "0.28", features = ["derive"] }
 exitcode = "1.1.2"
 quit = "2.0.0"
-infer = "0.16.0"
+infer = "0.22"
 owo-colors = "4.1.0"
 open = "5.3.2"
 serde_with = "3.12.0"
