@@ -20,11 +20,11 @@ use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
 use workshop::{
-    Tag, check_tags_are_predefined, is_valid_description, is_valid_preview_type, is_valid_title,
+    Tag, check_tags_are_predefined, is_valid_description, is_valid_preview_file, is_valid_title,
     open_workshop_page,
 };
 
-use crate::workshop::SteamworksClient;
+use crate::workshop::{MAX_PREVIEW_SIZE_BYTES, SteamworksClient};
 
 #[allow(unused)]
 macro_rules! exit_on_err {
@@ -96,11 +96,14 @@ fn run() -> eyre::Result<()> {
 
     fn inquire_preview_path() -> eyre::Result<Option<String>> {
         Ok(inquire::Text::new("Preview Image")
-            .with_help_message("Suggested formats include JPG, PNG and GIF")
+            .with_help_message(&format!(
+                "Suggested formats include JPG, PNG and GIF (max {})",
+                indicatif::DecimalBytes(MAX_PREVIEW_SIZE_BYTES)
+            ))
             .with_validator(|s: &str| {
                 match PathBuf::from_str(s)
                     .map_err(eyre::Report::msg)
-                    .and_then(|it| is_valid_preview_type(it))
+                    .and_then(is_valid_preview_file)
                 {
                     Ok(_) => Ok(inquire::validator::Validation::Valid),
                     Err(err) => Ok(inquire::validator::Validation::Invalid(err.into())),
@@ -162,7 +165,7 @@ fn run() -> eyre::Result<()> {
             handle = handle.description(description);
         }
         if let Some(preview_path) = &workshop_item.preview_path {
-            is_valid_preview_type(&preview_path)?;
+            is_valid_preview_file(preview_path)?;
             handle = handle.preview_path(&preview_path.canonicalize()?);
         }
 
@@ -375,6 +378,9 @@ fn run() -> eyre::Result<()> {
             )?;
             if let Some(description) = &command.workshop_item.description {
                 is_valid_description(description)?;
+            }
+            if let Some(preview_path) = &command.workshop_item.preview_path {
+                is_valid_preview_file(preview_path)?;
             }
 
             if !cli.no_prompt {
@@ -596,6 +602,9 @@ fn run() -> eyre::Result<()> {
             )?;
             if let Some(description) = &command.workshop_item.description {
                 is_valid_description(description)?;
+            }
+            if let Some(preview_path) = &command.workshop_item.preview_path {
+                is_valid_preview_file(preview_path)?;
             }
 
             let client = SteamworksClient::init(workshop_item_cfg.app_id)?;

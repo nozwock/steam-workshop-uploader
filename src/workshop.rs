@@ -99,16 +99,40 @@ impl AsRef<str> for Tag {
     }
 }
 
-pub fn is_valid_preview_type(path: impl AsRef<Path>) -> eyre::Result<()> {
+pub const MAX_PREVIEW_SIZE_BYTES: u64 = 1024 * 1024;
+
+/// See https://partner.steamgames.com/doc/api/ISteamUGC#UpdateItemPreviewFile.
+pub fn is_valid_preview_file(path: impl AsRef<Path>) -> eyre::Result<()> {
+    let path = path.as_ref();
     match infer::get_from_path(path)?
-        .context("Unknown file type")?
+        .with_context(|| {
+            format!(
+                "Unable to determine image type of `{}`. Only PNG, JPEG, and GIF are allowed",
+                path.display()
+            )
+        })?
         .mime_type()
     {
-        "image/jpeg" | "image/gif" | "image/png" => Ok(()),
+        "image/jpeg" | "image/gif" | "image/png" => {
+            let metadata = fs_err::metadata(path)?;
+
+            if metadata.len() == 0 {
+                bail!("Preview image `{}` is empty", path.display());
+            }
+            if metadata.len() > MAX_PREVIEW_SIZE_BYTES {
+                bail!(
+                    "Preview file size ({}) exceeds the {} limit. Please compress or resize the image before uploading",
+                    indicatif::HumanBytes(metadata.len()),
+                    indicatif::HumanBytes(MAX_PREVIEW_SIZE_BYTES),
+                );
+            }
+
+            Ok(())
+        }
         mime_type => {
             bail!(
-                "Invalid preview filetype `{}`: Only png, jpeg, and gif are allowed",
-                mime_type
+                "Invalid preview filetype `{mime_type}` at `{}`: Only PNG, JPEG, and GIF are allowed",
+                path.display()
             );
         }
     }
