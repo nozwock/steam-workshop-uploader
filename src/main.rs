@@ -99,7 +99,7 @@ fn run() -> eyre::Result<()> {
         Ok(inquire::Text::new("Preview Image")
             .with_help_message(&format!(
                 "Suggested formats include JPG, PNG and GIF (max {})",
-                indicatif::DecimalBytes(MAX_PREVIEW_SIZE_BYTES)
+                indicatif::HumanBytes(MAX_PREVIEW_SIZE_BYTES)
             ))
             .with_validator(|s: &str| {
                 match PathBuf::from_str(s)

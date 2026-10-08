@@ -56,8 +56,7 @@ pub struct WorkshopItemArgs {
     /// Language code for title and description.
     #[arg(short = 'l', long, value_name = "LANG")]
     pub language: Option<Language>,
-    /// Suggested formats include JPG, PNG and GIF.
-    /// Preview images are stored under the user's Cloud, so sufficient free space is required.
+    /// Suggested formats include JPG, PNG and GIF (max 1 MiB).
     #[arg(
         long = "preview",
         value_name = "FILE",
