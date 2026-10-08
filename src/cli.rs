@@ -3,7 +3,7 @@ use std::{fmt::Debug, path::PathBuf};
 use clap::{Parser, Subcommand, ValueEnum, builder::TypedValueParser};
 use clio::ClioPath;
 
-use crate::workshop::{AppId, Tag};
+use crate::workshop::{AppId, Language, Tag};
 
 static IGNORE_HELP: &'static str = r#"By default, files and directories matching ignore patterns from files like `.ignore` and `.gitignore` are excluded."#;
 
@@ -53,6 +53,9 @@ pub struct WorkshopItemArgs {
     pub visibility: Option<PublishedFileVisibility>,
     #[arg(short, long = "tag", value_parser = |s: &str| Tag::new(s.to_owned()))]
     pub tags: Vec<Tag>,
+    /// Language code for title and description.
+    #[arg(short = 'l', long, value_name = "LANG")]
+    pub language: Option<Language>,
     /// Suggested formats include JPG, PNG and GIF.
     /// Preview images are stored under the user's Cloud, so sufficient free space is required.
     #[arg(

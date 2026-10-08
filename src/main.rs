@@ -16,12 +16,13 @@ use config::{AppConfig, Config, ConfigWithPath, WorkshopItemConfig};
 use defines::{APP_LOG_DIR, WORKSHOP_METADATA_FILENAME};
 use itertools::Itertools;
 use plugins::{PluginContext, find_plugin};
+use strum::VariantArray;
 use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_utils::{format::SourceFormatter, writer::RotatingFileWriter};
 use workshop::{
-    Tag, check_tags_are_predefined, is_valid_description, is_valid_preview_file, is_valid_title,
-    open_workshop_page,
+    Language, Tag, check_tags_are_predefined, is_valid_description, is_valid_preview_file,
+    is_valid_title, open_workshop_page,
 };
 
 use crate::workshop::{MAX_PREVIEW_SIZE_BYTES, SteamworksClient};
@@ -155,6 +156,10 @@ fn run() -> eyre::Result<()> {
         let mut handle = handle
             .visibility(workshop_item.visibility.unwrap_or_default().into())
             .tags(workshop_item.tags.iter().collect_vec(), false);
+
+        if let Some(language) = &workshop_item.language {
+            handle = handle.language(language.into());
+        }
 
         if let Some(title) = &workshop_item.title {
             is_valid_title(title)?;
@@ -293,6 +298,18 @@ fn run() -> eyre::Result<()> {
         .to_vec(),
     );
 
+    fn resolve_language(
+        client: &SteamworksClient,
+        workshop_cfg: Option<&WorkshopItemConfig>,
+        app_cfg: &AppConfig,
+    ) -> Language {
+        workshop_cfg
+            .and_then(|it| it.language)
+            .or(app_cfg.language)
+            .or_else(|| client.utils().ui_language().parse::<Language>().ok())
+            .unwrap_or_default()
+    }
+
     match cli.command {
         cli::Command::Create(mut command) => {
             let content_path = command
@@ -383,6 +400,8 @@ fn run() -> eyre::Result<()> {
                 is_valid_preview_file(preview_path)?;
             }
 
+            let client = SteamworksClient::init(app_id)?;
+
             if !cli.no_prompt {
                 if command.workshop_item.title.is_none() {
                     command.workshop_item.title = inquire::Text::new("Title")
@@ -433,6 +452,21 @@ fn run() -> eyre::Result<()> {
                     command.workshop_item.visibility =
                         visibility_prompt.clone().prompt_skippable()?;
                 }
+                if command.workshop_item.language.is_none() {
+                    let default_lang =
+                        resolve_language(&client, existing_cfg.as_ref(), &config.inner);
+                    command.workshop_item.language =
+                        inquire::Select::new("Language", Language::VARIANTS.into())
+                            .with_starting_cursor(
+                                Language::VARIANTS
+                                    .iter()
+                                    .position(|&it| it == default_lang)
+                                    .unwrap_or(0),
+                            )
+                            .with_help_message("Language for title and description")
+                            .prompt_skippable()?
+                            .filter(|it| it != &default_lang);
+                }
                 if command.workshop_item.change_log.is_none() {
                     let is_md = command.workshop_item.markdown;
                     let mut editor = inquire::Editor::new("Changelog");
@@ -456,12 +490,12 @@ fn run() -> eyre::Result<()> {
 
             eprintln!("{}", "[-] Creating workshop item...".cyan());
 
-            let client = SteamworksClient::init(app_id)?;
             let (file_id, _) = workshop::create_item_with_metadata_file(
                 &client,
                 app_id,
                 &content_path,
                 &command.workshop_item.tags,
+                command.workshop_item.language,
             )?;
 
             eprintln!(
@@ -609,11 +643,16 @@ fn run() -> eyre::Result<()> {
 
             let client = SteamworksClient::init(workshop_item_cfg.app_id)?;
 
+            let resolved_language = command.workshop_item.language.unwrap_or_else(|| {
+                resolve_language(&client, Some(&workshop_item_cfg), &config.inner)
+            });
+
             let (tx, rx) = mpsc::channel();
             client
                 .ugc()
                 .query_item(item_id.into())?
                 .include_long_desc(true)
+                .language(resolved_language.into())
                 .fetch(move |result| {
                     _ = tx
                         .send(result.map(|it| it.iter().find_map(|it| it)).ok().flatten())
@@ -884,6 +923,7 @@ fn run() -> eyre::Result<()> {
                 app_id: app_id.0,
                 item_id,
                 tags,
+                language: None,
             }
             .store_path(&metadata_path)?;
 

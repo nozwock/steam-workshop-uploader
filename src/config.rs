@@ -13,7 +13,7 @@ use tracing::{info, warn};
 
 use crate::{
     defines::APP_CONFIG_PATH,
-    workshop::{AppId, Tag},
+    workshop::{AppId, Language, Tag},
 };
 
 /// To be able to easily store config to the path, from which the config was initially read from.
@@ -101,6 +101,8 @@ pub struct AppConfig {
     #[default(true)]
     pub open_item_page_on_complete: bool,
     pub valid_tags: HashMap<AppId, Vec<Tag>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<Language>,
 }
 
 impl Config for AppConfig {}
@@ -119,6 +121,8 @@ pub struct WorkshopItemConfig {
     /// Tags need to be stored in the metadata file, as Steam doesn’t retain them if no tags are provided to Steamworks
     /// during an item update.
     pub tags: Vec<Tag>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<Language>,
 }
 
 impl Config for WorkshopItemConfig {}

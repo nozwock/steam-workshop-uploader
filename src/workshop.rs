@@ -19,6 +19,64 @@ use crate::{
     defines::{LOCALE_ENV_VARS, WORKSHOP_METADATA_FILENAME},
 };
 
+/// Related:
+/// - https://partner.steamgames.com/doc/api/ISteamUGC#SetLanguage
+/// - https://partner.steamgames.com/doc/store/localization/languages
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    Default,
+    Serialize,
+    Deserialize,
+    clap::ValueEnum,
+    strum::EnumString,
+    strum::Display,
+    strum::AsRefStr,
+    strum::IntoStaticStr,
+    strum::VariantArray,
+)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+#[clap(rename_all = "lowercase")]
+pub enum Language {
+    Arabic,
+    Bulgarian,
+    Schinese,
+    Tchinese,
+    Czech,
+    Danish,
+    Dutch,
+    #[default]
+    English,
+    Finnish,
+    French,
+    German,
+    Greek,
+    Hungarian,
+    Indonesian,
+    Italian,
+    Japanese,
+    Koreana,
+    Malay,
+    Norwegian,
+    Polish,
+    Portuguese,
+    Brazilian,
+    Romanian,
+    Russian,
+    Spanish,
+    Latam,
+    Swedish,
+    Thai,
+    Turkish,
+    Ukrainian,
+    Vietnamese,
+}
+
 #[serde_as]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -392,6 +450,7 @@ pub fn create_item_with_metadata_file(
     app_id: impl Into<steamworks::AppId>,
     content_path: impl AsRef<Path>,
     tags: &[Tag],
+    language: Option<Language>,
 ) -> eyre::Result<(steamworks::PublishedFileId, bool)> {
     let app_id = app_id.into();
 
@@ -406,10 +465,11 @@ pub fn create_item_with_metadata_file(
 
     info!(item_id = file_id.0, "Workshop item created");
 
-    _ = WorkshopItemConfig {
+    WorkshopItemConfig {
         app_id: app_id.0,
         item_id: Some(file_id.0),
         tags: tags.to_owned(),
+        language,
     }
     .store_path(content_path.as_ref().join(WORKSHOP_METADATA_FILENAME))?;
 
